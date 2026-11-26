@@ -98,6 +98,11 @@ export class ProductsPage {
     return this.store.clients().filter((x) => p.clientIds.includes(x.id));
   }
 
+  /** "Acme Corp, Globex" for the compact card */
+  protected clientNames(p: Product) {
+    return this.clientsOf(p).map((c) => c.name).join(', ');
+  }
+
   protected value(e: Event) {
     return (e.target as HTMLInputElement).value;
   }

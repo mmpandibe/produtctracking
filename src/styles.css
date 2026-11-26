@@ -148,8 +148,9 @@ body {
 }
 
 /* 2.5.8 Target size (minimum): icon-only buttons and links get at least 24 × 24 CSS px */
-/* (buttons with any responsive hidden class keep their own display rules) */
-:is(button, a):has(> app-icon:only-child):not([class*="hidden"]) {
+/* Icon-only controls carry an aria-label (text buttons don't, and CSS can't see text nodes, so :only-child alone would
+   also match "icon + text" buttons). Buttons with any responsive hidden class keep their own display rules. */
+:is(button, a)[aria-label]:has(> app-icon:only-child):not([class*="hidden"]) {
   min-width: 24px;
   min-height: 24px;
   display: inline-grid;
