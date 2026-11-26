@@ -1,0 +1,234 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Text colour on the light glass (use text-ink, text-ink/70, border-ink/10 …) */
+  --color-ink: #1f2a37;
+  /* Brand blue — one step darker than the reference #1677ff so text and white-on-blue buttons reach WCAG AA 4.5:1 */
+  --color-brand: #0b5fd9;
+  --color-brand-dark: #0847a6;
+
+  /* Accent colours (stats, badges, charts) — tuned for a light background */
+  /* (darkened for WCAG AA: these are also used as text colours) */
+  --color-pastel-blue: #1d5fd1;
+  --color-pastel-pink: #b8327a;
+  --color-pastel-green: #166534;
+  --color-pastel-coral: #b7410e;
+  --color-pastel-yellow: #92400e;
+}
+
+:root {
+  color-scheme: light;
+}
+
+/* Compact sizing: 14px root makes all rem-based text and spacing ~12% smaller */
+html {
+  height: 100%;
+  font-size: 14px;
+}
+
+body {
+  min-height: 100%;
+}
+
+/* Soft sky-blue backdrop with white haze, as in the reference */
+body {
+  @apply text-ink antialiased;
+  background-color: #dcebf8;
+  background-image:
+    radial-gradient(at 0% 100%, rgb(96 170 240 / 0.55) 0, transparent 40%),
+    radial-gradient(at 12% 0%, rgb(255 255 255 / 0.75) 0, transparent 35%),
+    radial-gradient(at 85% 15%, rgb(255 255 255 / 0.6) 0, transparent 40%),
+    linear-gradient(135deg, #bcdcf6 0%, #d6e9f8 35%, #e6f1fb 100%);
+  background-attachment: fixed;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(31 42 55 / 0.2) transparent;
+}
+
+/* Hide a scrollbar but keep wheel/touch scrolling */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@layer components {
+  /* Frosted white panel */
+  .glass {
+    @apply border border-white/80 bg-white/45 backdrop-blur-xl;
+    box-shadow: 0 4px 24px rgb(40 90 150 / 0.08);
+  }
+
+  /* Interactive glass: lifts slightly on hover */
+  .glass-hover {
+    @apply transition duration-200 hover:-translate-y-0.5 hover:bg-white/65 hover:shadow-lg hover:shadow-sky-900/5;
+  }
+
+  /* Denser frost for dialogs and menus */
+  .glass-strong {
+    @apply border border-white bg-white/85 backdrop-blur-2xl;
+    box-shadow: 0 20px 50px rgb(30 70 120 / 0.18);
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-ink/10 bg-white/70 px-3 py-1.5 text-[13px] text-ink outline-none transition
+      placeholder:text-ink/65 hover:border-ink/20 focus:border-brand focus:bg-white focus:ring-3 focus:ring-brand/15
+      disabled:bg-white/40 disabled:text-ink/50;
+  }
+
+  .label {
+    @apply mb-1 block text-[11px] font-medium uppercase tracking-wide text-ink/70;
+  }
+
+  /* Small uppercase section title, like "LIST OF CASES TO BE ACCEPTED" */
+  .section-title {
+    @apply text-[11px] font-medium uppercase tracking-wider text-ink/70;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition
+      active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply bg-brand text-white shadow-md shadow-brand/25 hover:bg-brand-dark;
+  }
+  .btn-secondary {
+    @apply border border-ink/10 bg-white/80 text-ink hover:bg-white;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white shadow-md shadow-red-600/20 hover:bg-red-700;
+  }
+
+  /* Round transparent icon button */
+  .icon-btn {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-full text-ink/70 transition hover:bg-white/70 hover:text-ink
+      disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent;
+  }
+
+  /* Selectable pill */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[12px] transition;
+  }
+  .chip-off {
+    @apply border-ink/10 bg-white/60 text-ink/75 hover:bg-white;
+  }
+  .chip-on {
+    @apply border-brand bg-brand text-white;
+  }
+
+  /* Small static tag (light grey pill, like "Requirements.doc") */
+  .tag {
+    @apply inline-flex items-center gap-1 rounded-md border border-ink/5 bg-white/70 px-2 py-0.5 text-[11px] text-ink/75;
+  }
+
+  /* Outlined status/priority pill — colour comes from an inline `color` */
+  .pill {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium;
+    border-color: color-mix(in srgb, currentColor 55%, transparent);
+    background-color: color-mix(in srgb, currentColor 8%, white);
+  }
+}
+
+/* ---- Accessibility (WCAG 2.2 AA) ---- */
+
+/* 2.4.7 / 2.4.11: a clear keyboard focus indicator on everything focusable (inputs keep their own ring) */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+.input:focus-visible {
+  outline: none;
+}
+
+/* 2.5.8 Target size (minimum): icon-only buttons and links get at least 24 × 24 CSS px */
+/* (buttons with any responsive hidden class keep their own display rules) */
+:is(button, a):has(> app-icon:only-child):not([class*="hidden"]) {
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+}
+
+/* Done / archived / deactivated rows: marked with a faint tint instead of opacity (opacity broke text contrast) */
+.muted-row {
+  background-color: rgb(31 42 55 / 0.04);
+}
+
+/* 2.4.1 Bypass blocks: skip link, visible when focused */
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: 8px;
+  z-index: 100;
+  transform: translateY(-200%);
+  border-radius: 8px;
+  background: var(--color-brand);
+  color: #fff;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.skip-link:focus {
+  transform: none;
+}
+
+/* 2.3.3-friendly: honour the reduced-motion setting */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- Board drag & drop (Angular CDK) ---- */
+.cdk-drag-preview {
+  border-radius: 0.5rem;
+  box-shadow: 0 12px 32px rgb(30 70 120 / 0.25);
+  transform: rotate(2deg);
+}
+.cdk-drag-placeholder {
+  opacity: 0.9;
+}
+.cdk-drag-animating,
+.cdk-drop-list-dragging .cdk-drag:not(.cdk-drag-placeholder) {
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+.cdk-drop-list-receiving {
+  background-color: rgb(22 119 255 / 0.04);
+  border-radius: 0.75rem;
+}
+
+/* ---- Print (CXO summary "Print / Save PDF") ---- */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+  html {
+    font-size: 12px;
+  }
+  body {
+    background: white !important;
+  }
+  .glass,
+  .glass-strong {
+    background: white !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    border-color: #e5e7eb !important;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+}

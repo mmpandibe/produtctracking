@@ -1,0 +1,357 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header [heading]="greeting() + ', ' + me().name.split(' ')[0]" [sub]="dateLabel()">
+    @if (canTeam()) {
+      <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist" aria-label="Dashboard view">
+        <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="activeView() === 'me' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="activeView() === 'me'" (click)="view.set('me')">My day</button>
+        <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="activeView() === 'team' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="activeView() === 'team'" (click)="view.set('team')">My team</button>
+      </div>
+    }
+  </app-page-header>
+
+  @if (ext.errors().attendance || ext.errors().productivity) {
+    <div class="mb-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-800" role="alert">
+      Attendance or laptop data couldn't be loaded, so those hours show as 0. {{ ext.errors().attendance || ext.errors().productivity }}
+    </div>
+  }
+
+  @if (activeView() === 'me') {
+    <!-- ================= My day ================= -->
+    @let t = myTiles();
+    <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <a routerLink="/tickets" [queryParams]="{ assignee: 'me' }" class="glass rounded-xl px-3 py-2 hover:bg-white/70"><div class="text-[11px] text-ink/70">My open tickets</div><div class="text-[20px] font-semibold tabular-nums">{{ t.open }}</div></a>
+      <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Overdue</div><div class="text-[20px] font-semibold tabular-nums" [class.text-red-700]="t.overdue">{{ t.overdue }}</div></div>
+      <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Due in 7 days</div><div class="text-[20px] font-semibold tabular-nums">{{ t.dueSoon }}</div></div>
+      <a routerLink="/time" class="glass rounded-xl px-3 py-2 hover:bg-white/70">
+        <div class="text-[11px] text-ink/70">Logged this week</div>
+        <div class="text-[20px] font-semibold tabular-nums">{{ hours(t.logged) }}</div>
+        <div class="mt-1 h-1 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full" [style.background]="'#1baf7a'" [style.width.%]="(t.logged / myWeek().target) * 100"></div></div>
+      </a>
+      <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Attended this week</div><div class="text-[20px] font-semibold tabular-nums">{{ tracked() ? hours(t.attended) : '—' }}</div></div>
+      <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Productive this week</div><div class="text-[20px] font-semibold tabular-nums text-brand">{{ tracked() ? hours(t.productive) : '—' }}</div></div>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div class="min-w-0 space-y-3">
+        <!-- My tickets -->
+        <section class="glass rounded-xl" aria-label="My tickets">
+          <div class="flex items-center gap-2 border-b border-ink/10 px-3 py-2">
+            <h2 class="text-[13px] font-semibold">My tickets</h2>
+            <span class="text-[11px] text-ink/70">assigned to me, not done</span>
+            <a routerLink="/tickets" [queryParams]="{ assignee: 'me' }" class="ml-auto text-[11px] text-brand hover:underline">See all</a>
+          </div>
+          @if (!myOpen().length) {
+            <p class="px-3 py-6 text-center text-[12px] text-ink/70">Nothing assigned to you right now.</p>
+          } @else {
+            <ul class="divide-y divide-ink/[0.06]">
+              @for (i of myOpen().slice(0, 8); track i.id) {
+                @let ty = typeOf(i.type);
+                @let st = status(i);
+                @let pr = priorityOf(i.priority);
+                <li>
+                  <a [routerLink]="['/tickets', i.key]" class="flex items-center gap-2 px-3 py-1.5 hover:bg-white/50">
+                    <app-icon [name]="ty.icon" [size]="13" [style.color]="(ty.color) | readable" />
+                    <app-icon [name]="pr.icon" [size]="13" [style.color]="(pr.color) | readable" [title]="pr.label" />
+                    <span class="shrink-0 font-mono text-[11px] text-ink/70">{{ i.key }}</span>
+                    <span class="min-w-0 flex-1 truncate text-[12px] font-medium">{{ i.summary }}</span>
+                    @if (i.dueDate) {
+                      <span class="hidden shrink-0 text-[11px] sm:inline" [class]="isLate(i) ? 'font-medium text-red-700' : 'text-ink/70'">{{ dueLabel(i) }}</span>
+                    }
+                    <span class="pill shrink-0 py-0 text-[10px]" [style.color]="(st?.color) | readable">{{ st?.name }}</span>
+                  </a>
+                </li>
+              }
+            </ul>
+            @if (myOpen().length > 8) {
+              <a routerLink="/tickets" [queryParams]="{ assignee: 'me' }" class="block border-t border-ink/10 px-3 py-1.5 text-[11px] text-brand hover:underline">{{ myOpen().length - 8 }} more</a>
+            }
+          }
+        </section>
+
+        <!-- My week -->
+        <section class="glass rounded-xl p-3" aria-label="My hours this week">
+          <div class="mb-2 flex flex-wrap items-baseline gap-x-2">
+            <h2 class="text-[13px] font-semibold">My hours this week</h2>
+            <span class="text-[11px] text-ink/70">attended (punches) · productive (laptop) · logged on tickets</span>
+            <a routerLink="/attendance" class="ml-auto text-[11px] text-brand hover:underline">Attendance &amp; Hours</a>
+          </div>
+          @if (tracked()) {
+            <app-bar-chart [categories]="myWeek().categories" [series]="myWeek().series" [height]="150" suffix="h" [decimals]="1" ariaLabel="Attended, productive and logged hours per day this week" />
+            @if (myWeek().logged + 60 < myWeek().productive) {
+              <p class="mt-2 text-[11px] text-ink/70">You've logged {{ hours(myWeek().productive - myWeek().logged) }} less than your productive laptop time this week. <a routerLink="/time" class="text-brand hover:underline">Log time</a></p>
+            }
+          } @else {
+            <p class="py-4 text-center text-[12px] text-ink/70">Attendance and laptop time aren't tracked for you. Logged this week: {{ hours(myWeek().logged) }}.</p>
+          }
+        </section>
+
+        @if (mySupport().length) {
+          <section class="glass rounded-xl" aria-label="My support tickets">
+            <div class="flex items-center gap-2 border-b border-ink/10 px-3 py-2">
+              <h2 class="text-[13px] font-semibold">My support tickets</h2>
+              <a routerLink="/support" class="ml-auto text-[11px] text-brand hover:underline">Support Desk</a>
+            </div>
+            <ul class="divide-y divide-ink/[0.06]">
+              @for (r of mySupport(); track r.issue.id) {
+                @let lv = levelOf(r.issue.supportLevel);
+                <li>
+                  <a [routerLink]="['/tickets', r.issue.key]" class="flex items-center gap-2 px-3 py-1.5 hover:bg-white/50">
+                    <span class="pill py-0 text-[10px]" [style.color]="(lv.color) | readable">{{ lv.label }}</span>
+                    <span class="shrink-0 font-mono text-[11px] text-ink/70">{{ r.issue.key }}</span>
+                    <span class="min-w-0 flex-1 truncate text-[12px]">{{ r.issue.summary }}</span>
+                    <span class="flex shrink-0 items-center gap-1 text-[11px]" [style.color]="(clockColors[r.sla.resolution.state]) | readable">
+                      <span class="h-1.5 w-1.5 rounded-full" [style.background]="clockColors[r.sla.resolution.state]"></span>{{ r.sla.resolution.state === 'breached' ? 'Breached' : r.sla.resolution.state === 'at_risk' ? 'At risk' : 'On time' }}
+                    </span>
+                  </a>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </div>
+
+      <!-- Right column -->
+      <div class="space-y-3">
+        @if (tracked()) {
+          <section class="glass rounded-xl p-3" aria-label="Today">
+            <h2 class="mb-1.5 text-[13px] font-semibold">Today</h2>
+            @if (myToday(); as a) {
+              @switch (a.status) {
+                @case ('leave') { <p class="text-[12px] font-medium" [style.color]="(attMeta.leave.color) | readable">On {{ leaveName(a.leaveType ?? '').toLowerCase() }}</p> }
+                @case ('weekend') { <p class="text-[12px] text-ink/70">Weekend</p> }
+                @case ('absent') { <p class="text-[12px] text-ink/70">Not punched in yet</p> }
+                @default {
+                  <p class="text-[12px]"><app-icon name="log-in" [size]="12" class="mr-1 text-emerald-700" />In at <strong [class.text-amber-800]="a.late">{{ timeOf(a.punchIn) }}</strong>{{ a.punchOut ? ' · out ' + timeOf(a.punchOut) : '' }} · {{ hours(a.workedMinutes) }}{{ a.punchOut ? '' : ' so far' }}</p>
+                }
+              }
+            } @else {
+              <p class="text-[12px] text-ink/70">No attendance record yet.</p>
+            }
+            @if (myMissed().length) {
+              <p class="mt-1.5 text-[11px] text-amber-800">{{ myMissed().length }} missed punch{{ myMissed().length === 1 ? '' : 'es' }} this week. <button type="button" class="font-medium underline" (click)="correctionOpen.set(true)">Correct my hours</button></p>
+            }
+          </section>
+
+          <section class="glass rounded-xl p-3" aria-label="My leave">
+            <div class="mb-2 flex items-center">
+              <h2 class="text-[13px] font-semibold">My leave</h2>
+              <button type="button" class="btn-secondary ml-auto px-2 py-0.5 text-[11px]" (click)="leaveOpen.set(true)"><app-icon name="calendar-off" [size]="12" />Apply</button>
+            </div>
+            @if (myBalance(); as b) {
+              <div class="mb-2 grid grid-cols-2 gap-2 text-[11px]">
+                <div class="rounded-lg bg-white/60 px-2 py-1.5"><div class="text-ink/70">Casual left</div><div class="text-[15px] font-semibold tabular-nums">{{ b.casual.allowed - b.casual.used }}<span class="text-[11px] font-normal text-ink/70"> / {{ b.casual.allowed }}</span></div></div>
+                <div class="rounded-lg bg-white/60 px-2 py-1.5"><div class="text-ink/70">Sick left</div><div class="text-[15px] font-semibold tabular-nums">{{ b.sick.allowed - b.sick.used }}<span class="text-[11px] font-normal text-ink/70"> / {{ b.sick.allowed }}</span></div></div>
+              </div>
+            }
+            @if (myRequests().length) {
+              <ul class="space-y-1">
+                @for (r of myRequests(); track r.id) {
+                  <li class="flex items-center gap-2 text-[11px]">
+                    <span class="min-w-0 flex-1 truncate">{{ r.label }}</span>
+                    <span class="pill py-0 text-[10px]" [style.color]="(reqMeta[r.status].color) | readable">{{ r.status === 'approved' ? 'Upcoming' : reqMeta[r.status].label }}</span>
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="text-[11px] text-ink/70">No pending or upcoming leave.</p>
+            }
+            <a routerLink="/attendance" [queryParams]="{ tab: 'requests' }" class="mt-2 block text-[11px] text-brand hover:underline">All my requests</a>
+          </section>
+        }
+
+        @if (canTeam()) {
+          <button type="button" class="glass w-full rounded-xl p-3 text-left hover:bg-white/70" (click)="view.set('team')">
+            <div class="text-[13px] font-semibold">My team</div>
+            <div class="text-[11px] text-ink/70">{{ teamTiles().present }} in today · {{ teamTiles().leave }} on leave{{ teamTiles().approvals ? ' · ' + teamTiles().approvals + ' waiting for your approval' : '' }}</div>
+          </button>
+        }
+      </div>
+    </div>
+  } @else {
+    <!-- ================= My team ================= -->
+    @let tt = teamTiles();
+    @let td = teamToday();
+    <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">People</div><div class="text-[20px] font-semibold tabular-nums">{{ tt.people }}</div></div>
+      <a routerLink="/attendance" class="glass rounded-xl px-3 py-2 hover:bg-white/70"><div class="text-[11px] text-ink/70">In today</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(attMeta.present.color) | readable">{{ td.weekend ? '—' : tt.present }}</div></a>
+      <a routerLink="/attendance" class="glass rounded-xl px-3 py-2 hover:bg-white/70"><div class="text-[11px] text-ink/70">On leave</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(tt.leave ? attMeta.leave.color : null) | readable">{{ tt.leave }}</div></a>
+      <a routerLink="/attendance" class="glass rounded-xl px-3 py-2 hover:bg-white/70"><div class="text-[11px] text-ink/70">Not in yet</div><div class="text-[20px] font-semibold tabular-nums">{{ tt.notIn }}</div></a>
+      <a routerLink="/support" class="glass rounded-xl px-3 py-2 hover:bg-white/70"><div class="text-[11px] text-ink/70">SLA breached</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(tt.breached ? clockColors.breached : null) | readable">{{ tt.breached }}</div></a>
+      <a routerLink="/attendance" [queryParams]="{ tab: 'requests' }" class="glass rounded-xl px-3 py-2 hover:bg-white/70"><div class="text-[11px] text-ink/70">Waiting for approval</div><div class="text-[20px] font-semibold tabular-nums" [class.text-amber-800]="tt.approvals">{{ tt.approvals }}</div></a>
+    </div>
+
+    <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div class="min-w-0 space-y-3">
+        <!-- Hours per person -->
+        <section class="glass rounded-xl" aria-label="Hours this week">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-ink/10 px-3 py-2">
+            <h2 class="text-[13px] font-semibold">Hours this week</h2>
+            <span class="flex items-center gap-1 text-[11px] text-ink/70"><span class="h-2 w-2 rounded-sm" [style.background]="'#9aa3ae'"></span>Attended</span>
+            <span class="flex items-center gap-1 text-[11px] text-ink/70"><span class="h-2 w-2 rounded-sm bg-brand"></span>Productive</span>
+            <span class="flex items-center gap-1 text-[11px] text-ink/70"><span class="h-2 w-2 rounded-sm" [style.background]="'#1baf7a'"></span>Logged</span>
+            <a routerLink="/attendance" [queryParams]="{ tab: 'productivity' }" class="ml-auto text-[11px] text-brand hover:underline">Details</a>
+          </div>
+          @if (!teamHours().length) {
+            <p class="px-3 py-6 text-center text-[12px] text-ink/70">No tracked people in your scope.</p>
+          } @else {
+            <ul class="divide-y divide-ink/[0.06]">
+              @for (r of teamHours(); track r.user.id) {
+                <li class="grid grid-cols-[minmax(0,130px)_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1.5 sm:grid-cols-[170px_minmax(0,1fr)_200px]">
+                  <span class="flex min-w-0 items-center gap-1.5"><app-avatar [user]="r.user" size="sm" /><span class="truncate text-[12px]">{{ r.user.name }}</span></span>
+                  <div class="space-y-[2px]" [title]="'Attended ' + hours(r.attended) + ' · productive ' + hours(r.productive) + ' · logged ' + hours(r.logged)">
+                    <div class="h-1.5 rounded-r-sm" [style.background]="'#9aa3ae'" [style.width]="pctOf(r.attended)"></div>
+                    <div class="h-1.5 rounded-r-sm bg-brand" [style.width]="pctOf(r.productive)"></div>
+                    <div class="h-1.5 rounded-r-sm" [style.background]="'#1baf7a'" [style.width]="pctOf(r.logged)"></div>
+                  </div>
+                  <span class="text-right text-[11px] tabular-nums text-ink/70">
+                    <span class="hidden sm:inline">{{ hours(r.attended) }} · </span><span class="text-brand">{{ hours(r.productive) }}</span> · {{ hours(r.logged) }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <!-- Workload -->
+        <section class="glass rounded-xl p-3" aria-label="Workload">
+          <div class="mb-2 flex items-baseline gap-2">
+            <h2 class="text-[13px] font-semibold">Workload</h2>
+            <span class="text-[11px] text-ink/70">open tickets per person</span>
+            @if (workload().unassigned) {
+              <a routerLink="/tickets" [queryParams]="{ assignee: 'none' }" class="ml-auto text-[11px] text-amber-800 hover:underline">{{ workload().unassigned }} unassigned</a>
+            }
+          </div>
+          @if (workload().rows.length) {
+            <app-bar-chart [categories]="workload().categories" [series]="workload().series" [horizontal]="true" [labelWidth]="120" ariaLabel="Open tickets per person by status" />
+            @if (workload().rows; as rows) {
+              <p class="mt-2 text-[11px] text-ink/70">
+                @for (r of rows; track r.user.id) {
+                  @if (r.overdue) {
+                    <span class="mr-2 text-red-700">{{ r.user.name }}: {{ r.overdue }} overdue</span>
+                  }
+                }
+              </p>
+            }
+          } @else {
+            <p class="py-4 text-center text-[12px] text-ink/70">No open assigned tickets.</p>
+          }
+        </section>
+
+        <!-- Sprints -->
+        <section class="glass rounded-xl" aria-label="Active sprints">
+          <div class="flex items-center gap-2 border-b border-ink/10 px-3 py-2">
+            <h2 class="text-[13px] font-semibold">Active sprints</h2>
+            <a routerLink="/backlog" class="ml-auto text-[11px] text-brand hover:underline">Backlog &amp; Sprints</a>
+          </div>
+          @if (!sprints().length) {
+            <p class="px-3 py-5 text-center text-[12px] text-ink/70">No active sprints.</p>
+          } @else {
+            <ul class="divide-y divide-ink/[0.06]">
+              @for (s of sprints(); track s.sprint.id) {
+                <li class="px-3 py-2">
+                  <div class="mb-1 flex flex-wrap items-center gap-x-2 text-[12px]">
+                    <span class="h-2 w-2 rounded-full" [style.background]="s.product?.color"></span>
+                    <span class="font-medium">{{ s.sprint.name }}</span>
+                    <span class="text-[11px] text-ink/70">{{ s.product?.name }}</span>
+                    <span class="ml-auto text-[11px]" [class]="s.behind ? 'font-medium text-amber-800' : 'text-ink/70'">
+                      {{ s.st.points ? s.st.donePoints + ' / ' + s.st.points + ' pts' : s.st.done + ' / ' + s.st.total + ' tickets' }}{{ s.daysLeft !== undefined ? ' · ' + (s.daysLeft >= 0 ? s.daysLeft + 'd left' : -s.daysLeft + 'd over') : '' }}{{ s.behind ? ' · behind' : '' }}
+                    </span>
+                  </div>
+                  <div class="relative h-2 overflow-hidden rounded-full bg-ink/10">
+                    <div class="h-full rounded-full" [style.background]="'#1baf7a'" [style.width.%]="s.workPct"></div>
+                    @if (s.timePct !== undefined) {
+                      <div class="absolute inset-y-0 w-0.5 bg-ink/60" [style.left.%]="s.timePct" title="Time elapsed"></div>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      </div>
+
+      <div class="order-first space-y-3 lg:order-none">
+        <!-- Today -->
+        <section class="glass rounded-xl p-3" aria-label="Team today">
+          <h2 class="mb-2 text-[13px] font-semibold">Today</h2>
+          @if (td.weekend) {
+            <p class="text-[12px] text-ink/70">It's the weekend.</p>
+          } @else {
+            <div class="mb-1 text-[11px] font-medium" [style.color]="(attMeta.leave.color) | readable">On leave ({{ td.onLeave.length }})</div>
+            @if (td.onLeave.length) {
+              <ul class="mb-2 space-y-1">
+                @for (l of td.onLeave; track l.user.id) {
+                  <li class="flex items-center gap-1.5 text-[12px]"><app-avatar [user]="l.user" size="sm" /><span class="min-w-0 flex-1 truncate">{{ l.user.name }}</span><span class="text-[11px] text-ink/70">{{ l.label }}</span></li>
+                }
+              </ul>
+            } @else {
+              <p class="mb-2 text-[11px] text-ink/70">Nobody</p>
+            }
+            <div class="mb-1 text-[11px] font-medium text-ink/70">Not in yet ({{ td.notIn.length }})</div>
+            @if (td.notIn.length) {
+              <div class="mb-2 flex flex-wrap gap-1">
+                @for (u of td.notIn; track u.id) {
+                  <span class="tag text-[11px]">{{ u.name }}</span>
+                }
+              </div>
+            } @else {
+              <p class="mb-2 text-[11px] text-ink/70">Everyone's in</p>
+            }
+            @if (td.late.length) {
+              <div class="mb-1 text-[11px] font-medium text-amber-800">Late in ({{ td.late.length }})</div>
+              <div class="flex flex-wrap gap-1">
+                @for (l of td.late; track l.user.id) {
+                  <span class="tag text-[11px]">{{ l.user.name }} · {{ l.at }}</span>
+                }
+              </div>
+            }
+          }
+          @if (teamUpcoming().length) {
+            <div class="mb-1 mt-3 border-t border-ink/10 pt-2 text-[11px] font-medium text-ink/70">Coming up · 2 weeks</div>
+            <ul class="space-y-1">
+              @for (l of teamUpcoming(); track l.id) {
+                <li class="flex items-center gap-1.5 text-[11px]">
+                  <span class="min-w-0 flex-1 truncate"><span class="font-medium">{{ l.user?.name }}</span> · {{ l.label }}</span>
+                  @if (l.pending) {
+                    <span class="pill py-0 text-[10px]" [style.color]="(reqMeta.pending.color) | readable">Pending</span>
+                  }
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <!-- SLA -->
+        <section class="glass rounded-xl" aria-label="SLA attention">
+          <div class="flex items-center gap-2 border-b border-ink/10 px-3 py-2">
+            <h2 class="text-[13px] font-semibold">Support SLA</h2>
+            <a routerLink="/support" class="ml-auto text-[11px] text-brand hover:underline">Support Desk</a>
+          </div>
+          @if (!slaAttention().length) {
+            <p class="px-3 py-4 text-center text-[12px] text-ink/70">No breached or at-risk tickets.</p>
+          } @else {
+            <ul class="divide-y divide-ink/[0.06]">
+              @for (r of slaAttention().slice(0, 6); track r.issue.id) {
+                @let lv = levelOf(r.issue.supportLevel);
+                <li>
+                  <a [routerLink]="['/tickets', r.issue.key]" class="flex items-center gap-1.5 px-3 py-1.5 hover:bg-white/50">
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" [style.background]="r.breached ? clockColors.breached : clockColors.at_risk"></span>
+                    <span class="pill py-0 text-[10px]" [style.color]="(lv.color) | readable">{{ lv.label }}</span>
+                    <span class="shrink-0 font-mono text-[11px] text-ink/70">{{ r.issue.key }}</span>
+                    <span class="min-w-0 flex-1 truncate text-[12px]">{{ r.issue.summary }}</span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      </div>
+    </div>
+  }
+
+  <app-leave-form [open]="leaveOpen()" (closed)="leaveOpen.set(false)" (saved)="showToast($event)" />
+  <app-correction-form [open]="correctionOpen()" [day]="myMissed()[0]" (closed)="correctionOpen.set(false)" (saved)="showToast($event)" />
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

@@ -1,0 +1,305 @@
+<div class="mx-auto max-w-[1400px]">
+  <app-page-header heading="Reports" [sub]="periodLabel()" />
+
+  <!-- Filters (one row, above every chart) -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-1.5 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+    <select class="input w-auto" aria-label="Period" (change)="periodKey.set($any(value($event)))">
+      <option value="30" [selected]="periodKey() === '30'">Last 30 days</option>
+      <option value="90" [selected]="periodKey() === '90'">Last 90 days</option>
+      <option value="180" [selected]="periodKey() === '180'">Last 6 months</option>
+      <option value="year" [selected]="periodKey() === 'year'">This year</option>
+      <option value="all" [selected]="periodKey() === 'all'">All time</option>
+    </select>
+    <select class="input w-auto" aria-label="Product" (change)="productFilter.set(value($event)); sprintChoice.set('')">
+      <option value="">All products</option>
+      @for (p of store.products(); track p.id) {
+        <option [value]="p.id" [selected]="p.id === productFilter()">{{ p.name }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Client" (change)="clientFilter.set(value($event))">
+      <option value="">All clients</option>
+      @for (c of store.clients(); track c.id) {
+        <option [value]="c.id" [selected]="c.id === clientFilter()">{{ c.name }}</option>
+      }
+    </select>
+    <span class="ml-auto text-[11px] text-ink/70">{{ scoped().length }} tickets in scope</span>
+  </div>
+
+  <!-- KPI tiles -->
+  <div class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+    @for (k of kpis(); track k.label) {
+      <div class="glass rounded-xl p-3">
+        <div class="flex items-center justify-between">
+          <span class="section-title">{{ k.label }}</span>
+          <app-icon [name]="k.icon" [size]="13" class="text-ink/70" />
+        </div>
+        <div class="mt-1 text-[22px] font-semibold tabular-nums leading-tight">{{ k.value }}</div>
+        <div class="text-[11px] text-ink/70">{{ k.hint }}</div>
+      </div>
+    }
+  </div>
+
+  <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
+    <!-- Trend -->
+    <section class="glass rounded-xl p-3.5 xl:col-span-2" aria-labelledby="trend-h">
+      <h2 id="trend-h" class="text-[13px] font-semibold">Created vs resolved per week</h2>
+      <p class="mb-2 text-[11px] text-ink/70">Are we keeping up? Resolved above created means the backlog is shrinking.</p>
+      <app-line-chart [labels]="trend().labels" [series]="trend().series" [height]="190" ariaLabel="Tickets created and resolved per week" />
+    </section>
+
+    <!-- Product-wise -->
+    <section class="glass rounded-xl p-3.5 xl:col-span-2" aria-labelledby="prod-h">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <div>
+          <h2 id="prod-h" class="text-[13px] font-semibold">Product-wise report</h2>
+          <p class="text-[11px] text-ink/70">Ticket status per product, plus effort and speed for the selected period.</p>
+        </div>
+        <button type="button" class="btn-secondary ml-auto px-2.5 py-1 text-[12px]" (click)="exportProducts()"><app-icon name="download" [size]="13" /> Export CSV</button>
+      </div>
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <app-bar-chart [categories]="productChart().categories" [series]="productChart().series" [horizontal]="true" ariaLabel="Tickets per product by status" />
+        <div class="overflow-hidden">
+          <table class="w-full table-fixed text-[12px]">
+            <thead class="text-left text-[11px] text-ink/70">
+              <tr class="border-b border-ink/10">
+                <th class="py-1.5 pr-2 font-medium">Product</th>
+                <th class="w-12 py-1.5 pr-2 text-right font-medium">Open</th>
+                <th class="w-12 py-1.5 pr-2 text-right font-medium">Done</th>
+                <th class="w-14 py-1.5 pr-2 text-right font-medium">Overdue</th>
+                <th class="hidden w-20 py-1.5 pr-2 text-right font-medium sm:table-cell">Points</th>
+                <th class="w-16 py-1.5 pr-2 text-right font-medium">Hours</th>
+                <th class="hidden w-20 py-1.5 text-right font-medium sm:table-cell">Avg cycle</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of productRows(); track r.product.id) {
+                <tr class="border-b border-ink/[0.06] last:border-0">
+                  <td class="py-1.5 pr-2">
+                    <a class="flex min-w-0 items-center gap-1.5 hover:text-brand" routerLink="/tickets" [queryParams]="{ product: r.product.id }">
+                      <span class="h-2 w-2 shrink-0 rounded-full" [style.background]="r.product.color"></span><span class="truncate font-medium">{{ r.product.name }}</span>
+                    </a>
+                  </td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.total - r.byCat.done }}</td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.byCat.done }}</td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums" [class.font-semibold]="r.overdue" [class.text-red-700]="r.overdue">{{ r.overdue }}</td>
+                  <td class="hidden py-1.5 pr-2 text-right tabular-nums sm:table-cell">{{ r.donePoints }}/{{ r.points }}</td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ hrs(r.minutes) }}</td>
+                  <td class="hidden py-1.5 text-right tabular-nums sm:table-cell">{{ r.avgCycle != null ? (r.avgCycle | number: '1.1-1') + 'd' : '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Client-wise -->
+    <section class="glass rounded-xl p-3.5 xl:col-span-2" aria-labelledby="client-h">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <div>
+          <h2 id="client-h" class="text-[13px] font-semibold">Client-wise report</h2>
+          <p class="text-[11px] text-ink/70">Open work, risk and effort per client. Resolution time = created → done.</p>
+        </div>
+        <button type="button" class="btn-secondary ml-auto px-2.5 py-1 text-[12px]" (click)="exportClients()"><app-icon name="download" [size]="13" /> Export CSV</button>
+      </div>
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <app-bar-chart [categories]="clientChart().categories" [series]="clientChart().series" [horizontal]="true" ariaLabel="Open and done tickets per client" />
+        <div class="overflow-hidden">
+          <table class="w-full table-fixed text-[12px]">
+            <thead class="text-left text-[11px] text-ink/70">
+              <tr class="border-b border-ink/10">
+                <th class="py-1.5 pr-2 font-medium">Client</th>
+                <th class="w-12 py-1.5 pr-2 text-right font-medium">Open</th>
+                <th class="w-14 py-1.5 pr-2 text-right font-medium">Overdue</th>
+                <th class="hidden w-20 py-1.5 pr-2 text-right font-medium md:table-cell">High pri.</th>
+                <th class="w-16 py-1.5 pr-2 text-right font-medium">Hours</th>
+                <th class="hidden w-24 py-1.5 text-right font-medium sm:table-cell">Avg resolution</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of clientRows(); track r.client.id) {
+                <tr class="border-b border-ink/[0.06] last:border-0">
+                  <td class="py-1.5 pr-2">
+                    <a class="block truncate font-medium hover:text-brand" routerLink="/tickets" [queryParams]="{ client: r.client.id }">{{ r.client.name }}</a>
+                  </td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.open }}</td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums" [class.font-semibold]="r.overdue" [class.text-red-700]="r.overdue">{{ r.overdue }}</td>
+                  <td class="hidden py-1.5 pr-2 text-right tabular-nums md:table-cell">{{ r.highPriorityOpen }}</td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ hrs(r.minutes) }}</td>
+                  <td class="hidden py-1.5 text-right tabular-nums sm:table-cell">{{ r.avgLead != null ? (r.avgLead | number: '1.1-1') + 'd' : '—' }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="7" class="py-4 text-center text-ink/70">No clients.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Month-wise hours: people × clients -->
+    <section class="glass rounded-xl p-3.5 xl:col-span-2" aria-labelledby="month-h">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <div>
+          <h2 id="month-h" class="text-[13px] font-semibold">Month-wise hours by person and client</h2>
+          <p class="text-[11px] text-ink/70">
+            Hours logged in the month for each client. Percentages show the share of the {{ shareOf() === 'person' ? 'person’s' : 'client’s' }} hours that month.
+          </p>
+        </div>
+        <div class="ml-auto flex flex-wrap items-center gap-1.5 [&_.input]:py-1 [&_.input]:text-[12px]">
+          <select class="input w-auto" aria-label="Month" (change)="month.set(value($event))">
+            @for (o of monthOptions(); track o.key) {
+              <option [value]="o.key" [selected]="o.key === month()">{{ o.label }}</option>
+            }
+          </select>
+          <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[11px]" role="radiogroup" aria-label="Percentages are a share of">
+            <span class="px-1.5 py-1 text-ink/70">Share of</span>
+            <button type="button" role="radio" class="rounded-md px-2 py-1" [class]="shareOf() === 'person' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-checked]="shareOf() === 'person'" (click)="shareOf.set('person')">Person</button>
+            <button type="button" role="radio" class="rounded-md px-2 py-1" [class]="shareOf() === 'client' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-checked]="shareOf() === 'client'" (click)="shareOf.set('client')">Client</button>
+          </div>
+          <button type="button" class="btn-secondary px-2.5 py-1 text-[12px]" (click)="exportMonth()"><app-icon name="download" [size]="13" /> Export CSV</button>
+        </div>
+      </div>
+      @let mm = monthMatrix();
+      @if (mm.m.grand === 0) {
+        <p class="rounded-lg border border-dashed border-ink/15 py-6 text-center text-[12px] text-ink/70">No hours logged in this month{{ productFilter() || clientFilter() ? ' for these filters' : '' }}.</p>
+      } @else {
+        <table class="w-full table-fixed text-[12px]">
+          <thead class="text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="w-28 py-1.5 pr-2 text-left font-medium sm:w-36">Person</th>
+              @for (c of mm.columns; track c.id) {
+                <th class="truncate px-1 py-1.5 text-center font-medium" [title]="c.name" [class.italic]="c.id === NO_CLIENT">{{ c.name }}</th>
+              }
+              <th class="w-20 py-1.5 pl-2 text-right font-medium sm:w-24">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of mm.rows; track r.user.id) {
+              <tr class="border-b border-ink/[0.06]" [class.text-ink/70]="!r.total">
+                <td class="truncate py-1 pr-2 font-medium">{{ r.user.name }}</td>
+                @for (c of mm.columns; track c.id) {
+                  @let v = mm.m.cell(r.user.id, c.id);
+                  @let share = cellShare(r.user.id, c.id);
+                  <td class="px-1 py-1 text-center">
+                    @if (v) {
+                      <div class="rounded-md px-1 py-0.5" [style.background]="cellShade(share)" [title]="r.user.name + ' · ' + c.name + ': ' + fmt(v) + ' (' + share + '% of ' + shareLabel(r.user.name, c.name) + ')'">
+                        <span class="font-semibold tabular-nums">{{ fmt(v) }}</span>
+                        <span class="ml-1 hidden text-[10.5px] tabular-nums text-ink sm:inline">{{ share }}%</span>
+                      </div>
+                    } @else {
+                      <span class="text-ink/25">·</span>
+                    }
+                  </td>
+                }
+                <td class="py-1 pl-2 text-right tabular-nums">
+                  <span class="font-semibold">{{ r.total ? fmt(r.total) : '—' }}</span>
+                  @if (r.total) {
+                    <span class="ml-1 hidden text-[10.5px] text-ink/70 sm:inline">{{ pct(r.total, mm.m.grand) }}%</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-ink/15 font-semibold">
+              <td class="py-1.5 pr-2 text-[11px] uppercase tracking-wide text-ink/70">Total</td>
+              @for (c of mm.columns; track c.id) {
+                <td class="px-1 py-1.5 text-center tabular-nums">
+                  {{ mm.m.colTotal(c.id) ? fmt(mm.m.colTotal(c.id)) : '—' }}
+                  @if (mm.m.colTotal(c.id)) {
+                    <span class="ml-1 hidden text-[10.5px] font-normal text-ink/70 sm:inline">{{ pct(mm.m.colTotal(c.id), mm.m.grand) }}%</span>
+                  }
+                </td>
+              }
+              <td class="py-1.5 pl-2 text-right tabular-nums">{{ fmt(mm.m.grand) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+        <p class="mt-2 text-[11px] text-ink/70">Row and column totals show each person’s and client’s share of all hours in the month. Darker cells = larger share.</p>
+      }
+    </section>
+
+    <!-- Burndown -->
+    <section class="glass rounded-xl p-3.5" aria-labelledby="burn-h">
+      <div class="mb-1 flex flex-wrap items-center gap-2">
+        <h2 id="burn-h" class="text-[13px] font-semibold">Sprint burndown</h2>
+        @if (sprintOptions().length) {
+          <select class="input ml-auto w-auto py-1 text-[12px]" aria-label="Sprint" (change)="sprintChoice.set(value($event))">
+            @for (sp of sprintOptions(); track sp.id) {
+              <option [value]="sp.id" [selected]="sp.id === sprint()?.id">{{ sp.name }}{{ sp.state === 'active' ? ' (active)' : '' }}</option>
+            }
+          </select>
+        }
+      </div>
+      @if (burn(); as b) {
+        <p class="mb-2 text-[11px] text-ink/70">
+          {{ b.remaining }} of {{ b.total }} story points remaining · {{ b.sprint.startDate | date: 'MMM d' }} – {{ b.sprint.endDate | date: 'MMM d' }}
+          @if (b.unestimated) {
+            · <span class="text-pastel-yellow">{{ b.unestimated }} unestimated ticket(s) not counted</span>
+          }
+        </p>
+        @if (b.total > 0) {
+          <app-line-chart [labels]="b.labels" [series]="b.series" [height]="190" suffix=" pts" ariaLabel="Sprint burndown: ideal vs remaining story points" />
+        } @else {
+          <p class="py-8 text-center text-[12px] text-ink/70">This sprint has no estimated tickets yet. Add story points on the Backlog &amp; Sprints page to see the burndown.</p>
+        }
+      } @else {
+        <p class="py-8 text-center text-[12px] text-ink/70">No started sprints yet. Start one on the Backlog &amp; Sprints page.</p>
+      }
+    </section>
+
+    <!-- Velocity -->
+    <section class="glass rounded-xl p-3.5" aria-labelledby="vel-h">
+      <h2 id="vel-h" class="text-[13px] font-semibold">Velocity</h2>
+      <p class="mb-2 text-[11px] text-ink/70">
+        Story points committed vs completed in the last {{ velocity().count || '' }} completed sprint(s){{ velocity().avg != null ? ' · average ' + (velocity().avg! | number: '1.0-1') + ' pts' : '' }}.
+      </p>
+      @if (velocity().count) {
+        <app-bar-chart [categories]="velocity().categories" [series]="velocity().series" [height]="170" suffix=" pts" ariaLabel="Committed vs completed story points per sprint" />
+      } @else {
+        <p class="py-8 text-center text-[12px] text-ink/70">No completed sprints yet.</p>
+      }
+    </section>
+
+    <!-- Workload -->
+    <section class="glass rounded-xl p-3.5" aria-labelledby="work-h">
+      <h2 id="work-h" class="text-[13px] font-semibold">Workload</h2>
+      <p class="mb-2 text-[11px] text-ink/70">
+        Open tickets per person by state{{ workload().unassigned ? ' · ' + workload().unassigned + ' open ticket(s) unassigned' : '' }}.
+      </p>
+      <app-bar-chart [categories]="workload().openChart.categories" [series]="workload().openChart.series" [horizontal]="true" ariaLabel="Open tickets per person" />
+      <h3 class="section-title mb-1.5 mt-4">Hours logged in period</h3>
+      <app-bar-chart [categories]="workload().hoursChart.categories" [series]="workload().hoursChart.series" [horizontal]="true" suffix="h" [decimals]="1" ariaLabel="Hours logged per person" />
+    </section>
+
+    <!-- Cycle time -->
+    <section class="glass rounded-xl p-3.5" aria-labelledby="cycle-h">
+      <h2 id="cycle-h" class="text-[13px] font-semibold">Cycle time</h2>
+      <p class="mb-2 text-[11px] text-ink/70">How long tickets take from work start to done ({{ cycle().count }} resolved in period).</p>
+      <div class="mb-3 grid grid-cols-3 gap-2 text-center">
+        <div class="rounded-lg bg-white/60 p-2"><div class="text-[17px] font-semibold tabular-nums">{{ cycle().avg != null ? (cycle().avg! | number: '1.1-1') + 'd' : '—' }}</div><div class="text-[10.5px] text-ink/70">average</div></div>
+        <div class="rounded-lg bg-white/60 p-2"><div class="text-[17px] font-semibold tabular-nums">{{ cycle().median != null ? (cycle().median! | number: '1.1-1') + 'd' : '—' }}</div><div class="text-[10.5px] text-ink/70">median</div></div>
+        <div class="rounded-lg bg-white/60 p-2" title="85% of tickets finish within this time"><div class="text-[17px] font-semibold tabular-nums">{{ cycle().p85 != null ? (cycle().p85! | number: '1.1-1') + 'd' : '—' }}</div><div class="text-[10.5px] text-ink/70">85th percentile</div></div>
+      </div>
+      <app-bar-chart [categories]="cycle().chart.categories" [series]="cycle().chart.series" [height]="130" ariaLabel="Resolved tickets by cycle time" />
+      @if (cycle().byType.length) {
+        <table class="mt-3 w-full text-[12px]">
+          <thead class="text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10"><th class="py-1 font-medium">Type</th><th class="py-1 text-right font-medium">Resolved</th><th class="py-1 text-right font-medium">Average</th><th class="py-1 text-right font-medium">Median</th></tr>
+          </thead>
+          <tbody>
+            @for (r of cycle().byType; track r.type.id) {
+              <tr class="border-b border-ink/[0.06] last:border-0">
+                <td class="py-1">{{ r.type.label }}</td>
+                <td class="py-1 text-right tabular-nums">{{ r.count }}</td>
+                <td class="py-1 text-right tabular-nums">{{ r.avg | number: '1.1-1' }}d</td>
+                <td class="py-1 text-right tabular-nums">{{ r.median | number: '1.1-1' }}d</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+  </div>
+</div>

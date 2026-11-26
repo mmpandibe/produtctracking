@@ -1,0 +1,531 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Organisation">
+    @switch (tab()) {
+      @case ('structure') {
+        <button type="button" class="btn-secondary" (click)="openTeam()" [disabled]="!store.divisions().length"><app-icon name="plus" [size]="15" /> Team</button>
+        <button type="button" class="btn-primary" (click)="openDivision()"><app-icon name="plus" [size]="15" /> Add division</button>
+      }
+      @case ('people') {
+        <button type="button" class="btn-primary" (click)="addPerson()"><app-icon name="plus" [size]="15" /> Add person</button>
+      }
+      @case ('vendors') {
+        <button type="button" class="btn-primary" (click)="openVendor()"><app-icon name="plus" [size]="15" /> Add vendor</button>
+      }
+    }
+  </app-page-header>
+
+  <!-- Tabs + counts -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2">
+    <div class="flex flex-wrap rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      @for (t of [
+        { id: 'structure', label: 'Structure' },
+        { id: 'people', label: 'People (' + counts().people + ')' },
+        { id: 'vendors', label: 'Vendors (' + store.vendors().length + ')' },
+        { id: 'roles', label: 'Roles' }
+      ]; track t.id) {
+        <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === t.id ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === t.id" (click)="tab.set($any(t.id))">
+          {{ t.label }}
+        </button>
+      }
+    </div>
+    <div class="flex flex-wrap items-center gap-1.5 text-[12px] text-ink/70">
+      <span class="pill">{{ store.divisions().length }} divisions</span>
+      <span class="pill">{{ store.teams().length }} teams</span>
+      <span class="pill">{{ counts().internal }} internal</span>
+      <span class="pill">{{ counts().vendor }} vendor</span>
+      <span class="pill">{{ counts().client }} client</span>
+    </div>
+  </div>
+
+  @switch (tab()) {
+    <!-- ================= Structure ================= -->
+    @case ('structure') {
+      @if (!store.divisions().length) {
+        <div class="glass rounded-xl p-8 text-center">
+          <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="layers" [size]="18" /></div>
+          <p class="text-[13px] font-medium">No divisions yet</p>
+          <p class="mb-3 text-[12px] text-ink/70">Start with a division, then add teams and people to it.</p>
+          <button type="button" class="btn-primary" (click)="openDivision()"><app-icon name="plus" [size]="15" /> Add division</button>
+        </div>
+      }
+      <div class="space-y-3">
+        @for (d of store.divisions(); track d.id) {
+          @let head = store.userById(d.headId);
+          @let teams = store.teamsOf(d.id);
+          <section class="glass rounded-xl p-3" [attr.aria-label]="d.name">
+            <div class="mb-2.5 flex flex-wrap items-start gap-x-3 gap-y-2">
+              <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" [style.background]="'color-mix(in srgb, ' + d.color + ' 30%, white)'">
+                <app-icon name="layers" [size]="15" />
+              </span>
+              <div class="min-w-0 flex-1">
+                <h2 class="text-[14px] font-semibold">{{ d.name }}</h2>
+                @if (d.description) {
+                  <p class="text-[12px] text-ink/70">{{ d.description }}</p>
+                }
+                <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  @for (p of store.divisionProducts(d.id); track p.id) {
+                    <span class="tag"><span class="h-1.5 w-1.5 rounded-full" [style.background]="p.color"></span>{{ p.name }}</span>
+                  } @empty {
+                    <span class="text-ink/70">No products linked — set the division on a product</span>
+                  }
+                </div>
+              </div>
+              <div class="flex w-full items-center gap-2 sm:w-auto">
+                <div class="mr-auto flex items-center gap-1.5 rounded-lg bg-white/50 px-2 py-1 sm:mr-0">
+                  <app-avatar [user]="head" size="sm" />
+                  <div class="leading-tight">
+                    <div class="text-[10px] text-ink/70">Division head</div>
+                    <div class="text-[12px] font-medium">{{ head?.name ?? 'Not set' }}</div>
+                  </div>
+                </div>
+                <button type="button" class="rounded p-1 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Add team to ' + d.name" title="Add team" (click)="openTeam(d.id)"><app-icon name="plus" [size]="15" /></button>
+                <button type="button" class="rounded p-1 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Edit ' + d.name" title="Edit division" (click)="openDivision(d)"><app-icon name="pencil" [size]="14" /></button>
+                <button type="button" class="rounded p-1 text-ink/70 hover:bg-red-50 hover:text-red-700" [attr.aria-label]="'Delete ' + d.name" title="Delete division" (click)="deletingDivision.set(d)"><app-icon name="trash" [size]="14" /></button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+              @for (t of teams; track t.id) {
+                @let mgr = store.userById(t.managerId);
+                @let members = store.teamMembers(t.id);
+                <div class="rounded-xl border border-ink/10 bg-white/55 p-2.5">
+                  <div class="mb-1.5 flex items-start gap-2">
+                    <div class="min-w-0 flex-1">
+                      <h3 class="truncate text-[13px] font-semibold">{{ t.name }}</h3>
+                      <p class="truncate text-[11px] text-ink/70">
+                        {{ mgr ? mgr.name : 'No assistant manager' }} · {{ members.length }} {{ members.length === 1 ? 'person' : 'people' }}
+                      </p>
+                    </div>
+                    <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Add people to ' + t.name" title="Add people" (click)="openAddMembers(t)"><app-icon name="users" [size]="14" /></button>
+                    <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Edit ' + t.name" title="Edit team" (click)="openTeam(d.id, t)"><app-icon name="pencil" [size]="13" /></button>
+                    <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-red-50 hover:text-red-700" [attr.aria-label]="'Delete ' + t.name" title="Delete team" (click)="deletingTeam.set(t)"><app-icon name="trash" [size]="13" /></button>
+                  </div>
+                  <ul class="space-y-0.5">
+                    @for (u of members; track u.id) {
+                      @let r = roleOf(u.role);
+                      <li class="group flex items-center gap-2 rounded-lg px-1 py-0.5 hover:bg-white/70" [class.opacity-50]="u.inactive">
+                        <app-avatar [user]="u" size="sm" />
+                        <button type="button" class="min-w-0 flex-1 truncate text-left text-[12px] hover:text-brand" (click)="editPerson(u)">
+                          {{ u.name }}
+                          @if (u.kind === 'vendor') {
+                            <span class="text-[10px] text-ink/70">· {{ companyOf(u) }}</span>
+                          }
+                        </button>
+                        <span class="shrink-0 text-[10px] font-medium" [style.color]="(r.color) | readable">{{ r.label }}</span>
+                        @if (u.id !== t.managerId) {
+                          <button type="button" class="shrink-0 rounded p-0.5 text-ink/70 hover:text-red-700 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" [attr.aria-label]="'Remove ' + u.name + ' from ' + t.name" (click)="removeFromTeam(u, t)">
+                            <app-icon name="x" [size]="12" />
+                          </button>
+                        }
+                      </li>
+                    } @empty {
+                      <li class="px-1 text-[11px] text-ink/70">No one in this team yet</li>
+                    }
+                  </ul>
+                  <div class="mt-1.5 flex flex-wrap items-center gap-1 border-t border-ink/[0.06] pt-1.5">
+                    @for (p of teamProducts(t); track p.id) {
+                      <span class="tag py-0 text-[10px]"><span class="h-1.5 w-1.5 rounded-full" [style.background]="p.color"></span>{{ p.key }}</span>
+                    }
+                    <button type="button" class="ml-auto text-[11px] text-brand hover:underline" (click)="addPerson(t.id)">+ New person</button>
+                  </div>
+                </div>
+              } @empty {
+                <div class="rounded-xl border border-dashed border-ink/15 p-3 text-center text-[12px] text-ink/70 md:col-span-2 xl:col-span-3">
+                  No teams in {{ d.name }} yet.
+                  <button type="button" class="text-brand hover:underline" (click)="openTeam(d.id)">Add a team</button>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
+        @if (unassigned().length) {
+          <section class="glass rounded-xl p-3" aria-label="Not in a team">
+            <h2 class="section-title mb-2 flex items-center gap-1.5"><app-icon name="users" [size]="13" /> Not in a team ({{ unassigned().length }})</h2>
+            <div class="flex flex-wrap gap-1.5">
+              @for (u of unassigned(); track u.id) {
+                <button type="button" class="flex items-center gap-1.5 rounded-full border border-ink/10 bg-white/60 py-0.5 pl-0.5 pr-2.5 text-[12px] hover:bg-white" (click)="editPerson(u)">
+                  <app-avatar [user]="u" size="sm" />{{ u.name }}
+                  <span class="text-[10px]" [style.color]="(roleOf(u.role).color) | readable">{{ roleOf(u.role).label }}</span>
+                </button>
+              }
+            </div>
+          </section>
+        }
+      </div>
+    }
+
+    <!-- ================= People ================= -->
+    @case ('people') {
+      <div class="glass mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+        <select class="input w-auto" aria-label="Filter by type" (change)="kindFilter.set($any(val($event)))">
+          <option value="">All types</option>
+          @for (k of kinds; track k.id) {
+            <option [value]="k.id">{{ k.label }}</option>
+          }
+        </select>
+        <select class="input w-auto" aria-label="Filter by role" (change)="roleFilter.set($any(val($event)))">
+          <option value="">All roles</option>
+          @for (r of roles; track r.id) {
+            <option [value]="r.id">{{ r.label }}</option>
+          }
+        </select>
+        <select class="input w-auto" aria-label="Filter by division" (change)="divisionFilter.set(val($event))">
+          <option value="">All divisions</option>
+          @for (d of store.divisions(); track d.id) {
+            <option [value]="d.id">{{ d.name }}</option>
+          }
+        </select>
+        <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70">
+          <input type="checkbox" class="accent-brand" [checked]="showInactive()" (change)="showInactive.set($any($event.target).checked)" />
+          Show deactivated
+        </label>
+        <div class="relative ml-auto min-w-[150px] flex-1 sm:max-w-64">
+          <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+          <input class="input pl-8" placeholder="Search people" aria-label="Search people by name, email or title" [value]="query()" (input)="query.set(val($event))" />
+        </div>
+      </div>
+
+      @if (!people().length) {
+        <div class="glass rounded-xl p-8 text-center text-[13px] text-ink/70">No one matches these filters.</div>
+      } @else {
+        <div class="glass overflow-hidden rounded-xl">
+          <table class="w-full table-fixed text-[12px]">
+            <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+              <tr class="border-b border-ink/10">
+                <th class="py-2 pl-3 pr-2 font-medium">Person</th>
+                <th class="w-32 py-2 pr-2 font-medium">Role</th>
+                <th class="hidden w-48 py-2 pr-2 font-medium sm:table-cell">Team / company</th>
+                <th class="hidden w-36 py-2 pr-2 font-medium md:table-cell">Reports to</th>
+                <th class="hidden w-44 py-2 pr-2 font-medium lg:table-cell">Products</th>
+                <th class="w-9 py-2"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (u of people(); track u.id) {
+                @let r = roleOf(u.role);
+                @let team = teamOfUser(u);
+                <tr class="border-b border-ink/[0.06] last:border-0 hover:bg-white/50" [class.muted-row]="u.inactive">
+                  <td class="py-1.5 pl-3 pr-2">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <app-avatar [user]="u" />
+                      <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                          <button type="button" class="truncate text-[13px] font-semibold hover:text-brand" (click)="editPerson(u)">{{ u.name }}</button>
+                          @if (u.inactive) {
+                            <span class="tag py-0 text-[10px]">Deactivated</span>
+                          }
+                          @if (u.id === store.currentUser().id) {
+                            <span class="tag py-0 text-[10px]">You</span>
+                          }
+                        </div>
+                        <div class="truncate text-[11px] text-ink/70">@if (u.employeeId) {<span class="mr-1 font-mono text-[10px] text-ink/70">{{ u.employeeId }}</span>}{{ u.title ? u.title + ' · ' : '' }}{{ u.email }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="py-1.5 pr-2"><span class="pill truncate" [style.color]="(r.color) | readable">{{ r.label }}</span></td>
+                  <td class="hidden py-1.5 pr-2 sm:table-cell">
+                    @if (u.kind !== 'internal') {
+                      <span class="tag mb-0.5 py-0 text-[10px]">{{ u.kind === 'vendor' ? 'Vendor' : 'Client' }} · {{ companyOf(u) }}</span>
+                    }
+                    @if (team) {
+                      <div class="truncate">{{ team.name }} <span class="text-ink/70">· {{ store.divisionById(team.divisionId)?.name }}</span></div>
+                    } @else if (u.kind === 'internal') {
+                      @let led = store.divisions().find((d) => d.headId === u.id);
+                      <div class="truncate text-ink/70">{{ led ? 'Heads ' + led.name : u.role === 'admin' ? 'All divisions' : 'No team' }}</div>
+                    }
+                  </td>
+                  <td class="hidden truncate py-1.5 pr-2 md:table-cell">{{ store.userById(u.managerId)?.name ?? '—' }}</td>
+                  <td class="hidden py-1.5 pr-2 lg:table-cell">
+                    <div class="flex flex-wrap gap-1">
+                      @for (p of store.userProducts(u.id); track p.id) {
+                        <span class="tag py-0 text-[10px]" [title]="p.leadId === u.id ? p.name + ' (lead)' : p.name"><span class="h-1.5 w-1.5 rounded-full" [style.background]="p.color"></span>{{ p.key }}{{ p.leadId === u.id ? ' ★' : '' }}</span>
+                      } @empty {
+                        <span class="text-ink/70">—</span>
+                      }
+                    </div>
+                  </td>
+                  <td class="py-1.5 pr-2 text-right">
+                    <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Actions for ' + u.name" (click)="toggleMenu(u.id, $event)">
+                      <app-icon name="ellipsis" [size]="15" />
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="mt-2 text-[11px] text-ink/70">★ = product lead. Deactivated people stay on their old tickets and time but can't be picked for new work.</p>
+      }
+    }
+
+    <!-- ================= Vendors ================= -->
+    @case ('vendors') {
+      @if (!store.vendors().length) {
+        <div class="glass rounded-xl p-8 text-center">
+          <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="building" [size]="18" /></div>
+          <p class="text-[13px] font-medium">No vendors yet</p>
+          <p class="mb-3 text-[12px] text-ink/70">Vendors are outside companies whose staff work on your products.</p>
+          <button type="button" class="btn-primary" (click)="openVendor()"><app-icon name="plus" [size]="15" /> Add vendor</button>
+        </div>
+      }
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        @for (v of store.vendors(); track v.id) {
+          @let staff = store.vendorUsers(v.id);
+          <div class="glass flex flex-col rounded-xl p-3">
+            <div class="mb-2 flex items-start gap-2">
+              <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-[11px] font-semibold text-amber-800">{{ v.name.slice(0, 2).toUpperCase() }}</span>
+              <div class="min-w-0 flex-1">
+                <h2 class="truncate text-[13px] font-semibold">{{ v.name }}</h2>
+                <p class="truncate text-[11px] text-ink/70">{{ v.contactName ?? 'No contact person' }}</p>
+              </div>
+              <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Edit ' + v.name" (click)="openVendor(v)"><app-icon name="pencil" [size]="13" /></button>
+              <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-red-50 hover:text-red-700" [attr.aria-label]="'Delete ' + v.name" (click)="deletingVendor.set(v)"><app-icon name="trash" [size]="13" /></button>
+            </div>
+            @if (v.contactEmail || v.contactPhone) {
+              <div class="mb-2 flex flex-wrap gap-x-3 text-[11px]">
+                @if (v.contactEmail) {
+                  <a class="inline-flex min-h-[24px] items-center truncate text-brand hover:underline" [href]="'mailto:' + v.contactEmail">{{ v.contactEmail }}</a>
+                }
+                @if (v.contactPhone) {
+                  <a class="inline-flex min-h-[24px] items-center text-ink/70 hover:text-brand" [href]="'tel:' + v.contactPhone">{{ v.contactPhone }}</a>
+                }
+              </div>
+            }
+            @if (v.notes) {
+              <p class="mb-2 text-[11px] text-ink/70">{{ v.notes }}</p>
+            }
+            <div class="section-title mb-1">Staff ({{ staff.length }})</div>
+            <ul class="mb-2 space-y-0.5">
+              @for (u of staff; track u.id) {
+                <li class="flex items-center gap-2" [class.opacity-50]="u.inactive">
+                  <app-avatar [user]="u" size="sm" />
+                  <button type="button" class="min-w-0 flex-1 truncate text-left text-[12px] hover:text-brand" (click)="editPerson(u)">{{ u.name }}</button>
+                  <span class="text-[10px]" [style.color]="(roleOf(u.role).color) | readable">{{ roleOf(u.role).label }}</span>
+                </li>
+              } @empty {
+                <li class="text-[11px] text-ink/70">No staff yet — add a person with type Vendor.</li>
+              }
+            </ul>
+            <div class="mt-auto flex flex-wrap items-center gap-1 border-t border-ink/[0.06] pt-1.5">
+              @for (p of vendorProducts(v); track p.id) {
+                <span class="tag py-0 text-[10px]"><span class="h-1.5 w-1.5 rounded-full" [style.background]="p.color"></span>{{ p.name }}</span>
+              } @empty {
+                <span class="text-[11px] text-ink/70">Not on any product</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+
+    <!-- ================= Roles ================= -->
+    @case ('roles') {
+      <div class="glass rounded-xl p-3">
+        <div class="mb-2">
+          <h2 class="text-[14px] font-semibold">Roles and what they can do</h2>
+          <p class="text-[12px] text-ink/70">Each person has one role. Rights apply only to the products the role can see. Use the person switcher at the bottom of the sidebar to try any role.</p>
+        </div>
+        <!-- Phones: one card per role -->
+        <div class="space-y-2 md:hidden">
+          @for (r of roles; track r.id) {
+            <div class="rounded-lg border border-ink/10 bg-white/55 p-2.5">
+              <div class="mb-1 flex items-center gap-2">
+                <span class="pill" [style.color]="(r.color) | readable">{{ r.label }}</span>
+                <span class="ml-auto text-[11px] text-ink/70">{{ roleCounts()[r.id].length }} {{ roleCounts()[r.id].length === 1 ? 'person' : 'people' }}</span>
+              </div>
+              <p class="mb-1.5 text-[11px] text-ink/70">{{ r.scope }}</p>
+              <div class="flex flex-wrap gap-1">
+                @for (c of capabilities; track c.id) {
+                  @if (can(r.id, c.id)) {
+                    <span class="tag py-0 text-[10px]"><app-icon name="check" [size]="10" />{{ c.label }}</span>
+                  }
+                }
+              </div>
+            </div>
+          }
+        </div>
+        <table class="hidden w-full table-fixed text-[12px] md:table">
+          <thead class="text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="w-36 py-2 pr-2 font-medium">Role</th>
+              <th class="py-2 pr-2 font-medium">Sees</th>
+              @for (c of capabilities; track c.id) {
+                <th class="w-[78px] py-2 pr-1 text-center text-[10px] font-medium leading-tight">{{ c.label }}</th>
+              }
+              <th class="w-28 py-2 font-medium">People</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of roles; track r.id) {
+              <tr class="border-b border-ink/[0.06] last:border-0">
+                <td class="py-2 pr-2"><span class="pill" [style.color]="(r.color) | readable">{{ r.label }}</span></td>
+                <td class="py-2 pr-2 text-[11px] text-ink/70">{{ r.scope }}</td>
+                @for (c of capabilities; track c.id) {
+                  <td class="py-2 pr-1 text-center">
+                    @if (can(r.id, c.id)) {
+                      <app-icon name="check" [size]="14" class="text-emerald-700" [attr.aria-label]="r.label + ' can: ' + c.label" />
+                    } @else {
+                      <span class="text-ink/25" [attr.aria-label]="r.label + ' cannot: ' + c.label">—</span>
+                    }
+                  </td>
+                }
+                <td class="py-2">
+                  <div class="flex items-center -space-x-1.5">
+                    @for (u of roleCounts()[r.id].slice(0, 4); track u.id) {
+                      <app-avatar [user]="u" size="sm" />
+                    }
+                    @if (roleCounts()[r.id].length > 4) {
+                      <span class="pl-2.5 text-[11px] text-ink/70">+{{ roleCounts()[r.id].length - 4 }}</span>
+                    }
+                    @if (!roleCounts()[r.id].length) {
+                      <span class="text-[11px] text-ink/70">None</span>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+
+  <!-- People row menu -->
+  @if (menuPerson(); as u) {
+    <div class="fixed inset-0 z-30" (click)="menuFor.set(null)"></div>
+    <div class="glass-strong fixed z-40 w-[168px] rounded-xl p-1" [style.top.px]="menuPos().top" [style.left.px]="menuPos().left" role="menu">
+      <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="editPerson(u)">
+        <app-icon name="pencil" [size]="13" /> Edit
+      </button>
+      @if (u.id !== store.currentUser().id) {
+        <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="toggleActive(u)">
+          <app-icon [name]="u.inactive ? 'archive-restore' : 'archive'" [size]="13" /> {{ u.inactive ? 'Reactivate' : 'Deactivate' }}
+        </button>
+        <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-red-700 hover:bg-red-50" (click)="askDeletePerson(u)">
+          <app-icon name="trash" [size]="13" /> Delete
+        </button>
+      }
+    </div>
+  }
+
+  <app-person-form [open]="personOpen()" [person]="editingPerson()" [teamPreset]="personTeam()" (closed)="personOpen.set(false)" (saved)="showToast($event)" />
+  <app-division-form [open]="divisionOpen()" [division]="editingDivision()" (closed)="divisionOpen.set(false)" (saved)="showToast($event)" />
+  <app-team-form [open]="teamOpen()" [team]="editingTeam()" [divisionPreset]="teamDivision()" (closed)="teamOpen.set(false)" (saved)="showToast($event)" />
+  <app-vendor-form [open]="vendorOpen()" [vendor]="editingVendor()" (closed)="vendorOpen.set(false)" (saved)="showToast($event)" />
+
+  <!-- Add people to a team -->
+  <app-modal [open]="!!addingTo()" [heading]="'Add people to ' + (addingTo()?.name ?? '')" (closed)="addingTo.set(undefined)">
+    <p class="mb-2 text-[12px] text-ink/70">People already in another team move to this one.</p>
+    <ul class="space-y-0.5">
+      @for (u of candidates(); track u.id) {
+        @let other = teamOfUser(u);
+        <li>
+          <label class="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-white/70">
+            <input type="checkbox" class="accent-brand" [checked]="picked().includes(u.id)" (change)="togglePick(u.id)" />
+            <app-avatar [user]="u" size="sm" />
+            <span class="min-w-0 flex-1 truncate text-[12px]">{{ u.name }}{{ u.kind === 'vendor' ? ' · ' + companyOf(u) : '' }}</span>
+            <span class="shrink-0 text-[10px]" [style.color]="(roleOf(u.role).color) | readable">{{ roleOf(u.role).label }}</span>
+            <span class="hidden w-28 shrink-0 truncate text-right text-[10px] text-ink/70 sm:block">{{ other ? 'In ' + other.name : 'No team' }}</span>
+          </label>
+        </li>
+      } @empty {
+        <li class="text-[12px] text-ink/70">Everyone is already in this team.</li>
+      }
+    </ul>
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="addingTo.set(undefined)">Cancel</button>
+      <button type="button" class="btn-primary" [disabled]="!picked().length" (click)="confirmAddMembers()">Add {{ picked().length || '' }}</button>
+    </div>
+  </app-modal>
+
+  <!-- Delete division -->
+  <app-modal [open]="!!deletingDivision()" heading="Delete division?" (closed)="deletingDivision.set(undefined)">
+    @if (deletingDivision(); as d) {
+      @let b = divisionBlockers(d);
+      @if (b.teams || b.products) {
+        <p class="text-[13px] text-ink/70">
+          <strong class="text-ink">{{ d.name }}</strong> still has {{ b.teams }} team(s) and {{ b.products }} product(s). Delete or move its teams, and move its products to
+          another division, before deleting it.
+        </p>
+      } @else {
+        <p class="text-[13px] text-ink/70"><strong class="text-ink">{{ d.name }}</strong> will be deleted. This cannot be undone.</p>
+      }
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deletingDivision.set(undefined)">{{ divisionBlocked() ? 'Close' : 'Cancel' }}</button>
+      @if (!divisionBlocked()) {
+        <button type="button" class="btn-danger" (click)="confirmDeleteDivision()">Delete division</button>
+      }
+    </div>
+  </app-modal>
+
+  <!-- Delete team -->
+  <app-modal [open]="!!deletingTeam()" heading="Delete team?" (closed)="deletingTeam.set(undefined)">
+    @if (deletingTeam(); as t) {
+      <p class="text-[13px] text-ink/70">
+        <strong class="text-ink">{{ t.name }}</strong> will be deleted. Its {{ store.teamMembers(t.id).length }} member(s) stay in nPro without a team, and keep their
+        reporting manager.
+      </p>
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deletingTeam.set(undefined)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="confirmDeleteTeam()">Delete team</button>
+    </div>
+  </app-modal>
+
+  <!-- Delete vendor -->
+  <app-modal [open]="!!deletingVendor()" heading="Delete vendor?" (closed)="deletingVendor.set(undefined)">
+    @if (deletingVendor(); as v) {
+      @let n = store.vendorUsers(v.id).length;
+      @if (n) {
+        <p class="text-[13px] text-ink/70"><strong class="text-ink">{{ v.name }}</strong> still has {{ n }} staff member(s). Delete them or change their type first.</p>
+      } @else {
+        <p class="text-[13px] text-ink/70"><strong class="text-ink">{{ v.name }}</strong> will be deleted. This cannot be undone.</p>
+      }
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deletingVendor.set(undefined)">{{ vendorBlocked() ? 'Close' : 'Cancel' }}</button>
+      @if (!vendorBlocked()) {
+        <button type="button" class="btn-danger" (click)="confirmDeleteVendor()">Delete vendor</button>
+      }
+    </div>
+  </app-modal>
+
+  <!-- Delete person -->
+  <app-modal [open]="!!deletingPerson()" heading="Delete person?" (closed)="deletingPerson.set(undefined)">
+    @if (deletingPerson(); as u) {
+      @let n = usageOf(u);
+      @if (hasHistory(u)) {
+        <p class="text-[13px] text-ink/70">
+          <strong class="text-ink">{{ u.name }}</strong> has history in nPro ({{ n.tickets }} ticket(s), {{ n.workLogs }} time entr{{ n.workLogs === 1 ? 'y' : 'ies' }},
+          {{ n.comments }} comment(s), leads {{ n.leads }} product(s)), so they can't be deleted. Deactivate them instead: they stay on old work but can't be picked for new work.
+        </p>
+      } @else {
+        <p class="text-[13px] text-ink/70">
+          <strong class="text-ink">{{ u.name }}</strong> will be deleted and removed from their team and products.
+          @if (n.reports) {
+            {{ n.reports }} person(s) who report to them will have no manager.
+          }
+          This cannot be undone.
+        </p>
+      }
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deletingPerson.set(undefined)">Cancel</button>
+      @if (deletingPerson(); as u) {
+        @if (hasHistory(u)) {
+          @if (!u.inactive) {
+            <button type="button" class="btn-primary" (click)="toggleActive(u)">Deactivate</button>
+          }
+        } @else {
+          <button type="button" class="btn-danger" (click)="confirmDeletePerson()">Delete person</button>
+        }
+      }
+    </div>
+  </app-modal>
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

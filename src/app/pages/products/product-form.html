@@ -1,0 +1,148 @@
+<app-modal [open]="open()" [heading]="product() ? 'Edit product ' + product()!.key : 'Create product'" (closed)="closed.emit()">
+  <form id="product-form" class="space-y-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_120px_100px]">
+      <div>
+        <label class="label" for="pf-name">Product name *</label>
+        <input id="pf-name" class="input" formControlName="name" placeholder="e.g. Customer Portal" autofocus />
+        @if (submitted() && form.controls.name.invalid) {
+          <p class="mt-1 text-xs text-pastel-coral">Product name is required</p>
+        }
+      </div>
+      <div>
+        <label class="label" for="pf-key">Key *</label>
+        <input
+          id="pf-key"
+          class="input font-mono uppercase"
+          maxlength="10"
+          [value]="form.controls.key.value"
+          (input)="onKeyInput($event)"
+        />
+      </div>
+      <div>
+        <label class="label" for="pf-version">Version</label>
+        <input id="pf-version" class="input" formControlName="version" placeholder="1.0" />
+      </div>
+    </div>
+    @if ((submitted() || form.controls.key.hasError('taken')) && keyError()) {
+      <p class="-mt-2 text-xs text-pastel-coral">{{ keyError() }}</p>
+    } @else if (!keyError()) {
+      <p class="-mt-2 text-[11px] text-ink/70">Tickets will be numbered {{ form.controls.key.value }}-1, {{ form.controls.key.value }}-2…</p>
+    }
+
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div>
+        <label class="label" for="pf-github">GitHub repository</label>
+        <input id="pf-github" class="input" type="url" formControlName="githubUrl" placeholder="https://github.com/org/repo" />
+        @if (form.controls.githubUrl.invalid && (submitted() || form.controls.githubUrl.touched)) {
+          <p class="mt-1 text-[11px] text-red-700">Enter a full link starting with https://</p>
+        }
+      </div>
+      <div>
+        <label class="label" for="pf-web">Website / web link</label>
+        <input id="pf-web" class="input" type="url" formControlName="websiteUrl" placeholder="https://app.example.com" />
+        @if (form.controls.websiteUrl.invalid && (submitted() || form.controls.websiteUrl.touched)) {
+          <p class="mt-1 text-[11px] text-red-700">Enter a full link starting with https://</p>
+        }
+      </div>
+    </div>
+
+    <div>
+      <label class="label" for="pf-desc">Description</label>
+      <textarea id="pf-desc" class="input min-h-20" formControlName="description" placeholder="What is this product?"></textarea>
+    </div>
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div>
+        <label class="label" for="pf-lead">Product lead</label>
+        <select id="pf-lead" class="input" formControlName="leadId">
+          @for (u of leads(); track u.id) {
+            <option [value]="u.id">{{ u.name }}</option>
+          }
+        </select>
+      </div>
+      <div>
+        <label class="label" for="pf-division">Division</label>
+        <select id="pf-division" class="input" formControlName="divisionId">
+          <option value="">No division</option>
+          @for (d of store.divisions(); track d.id) {
+            <option [value]="d.id">{{ d.name }}</option>
+          }
+        </select>
+      </div>
+    </div>
+
+    <div>
+      <span class="label">Members <span class="font-normal text-ink/70">(people who work on this product)</span></span>
+      <div class="flex flex-wrap gap-1.5">
+        @for (u of memberOptions(); track u.id) {
+          <button type="button" class="chip" [class]="memberIds().includes(u.id) ? 'chip-on' : 'chip-off'" [attr.aria-pressed]="memberIds().includes(u.id)" (click)="toggleMember(u.id)">
+            {{ u.name }} <span class="text-[10px]" [class]="memberIds().includes(u.id) ? 'text-white/75' : 'text-ink/70'">{{ roleLabel(u.role) }}</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <div>
+      <div>
+        <span class="label">Lifecycle</span>
+        <div class="flex flex-wrap gap-1.5">
+          @for (l of lifecycles; track l.id) {
+            <button
+              type="button"
+              class="chip text-xs"
+              [class]="lifecycle() === l.id ? 'chip-on' : 'chip-off'"
+              [attr.aria-pressed]="lifecycle() === l.id"
+              (click)="lifecycle.set(l.id)"
+            >
+              <span class="h-1.5 w-1.5 rounded-full" [class]="l.dot"></span>{{ l.label }}
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <span class="label">Clients</span>
+      <div class="flex flex-wrap gap-2">
+        @for (c of store.clients(); track c.id) {
+          <button
+            type="button"
+            class="chip"
+            [class]="clientIds().includes(c.id) ? 'chip-on' : 'chip-off'"
+            [attr.aria-pressed]="clientIds().includes(c.id)"
+            (click)="toggleClient(c.id)"
+          >
+            {{ c.name }}
+          </button>
+        }
+      </div>
+    </div>
+
+    <div>
+      <span class="label">Colour</span>
+      <div class="flex flex-wrap gap-2.5">
+        @for (c of palette; track c) {
+          <button
+            type="button"
+            class="flex h-6 w-6 items-center justify-center rounded-full ring-offset-2 transition hover:scale-110"
+            [class.ring-2]="color() === c"
+            [class.ring-brand]="color() === c"
+            [style.background]="c"
+            
+            [attr.aria-label]="'Colour ' + c"
+            (click)="color.set(c)"
+          >
+            @if (color() === c) {
+              <app-icon name="check" [size]="14" class="text-neutral-900" />
+            }
+          </button>
+        }
+      </div>
+    </div>
+  </form>
+
+  <div footer class="contents">
+    <button type="button" class="btn-secondary" (click)="closed.emit()">Cancel</button>
+    <button type="submit" form="product-form" class="btn-primary">{{ product() ? 'Save changes' : 'Create product' }}</button>
+  </div>
+</app-modal>

@@ -1,0 +1,404 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Attendance & Hours">
+    @if (tracked()) {
+      <button type="button" class="btn-secondary" (click)="openCorrection()"><app-icon name="clock" [size]="14" />Correct my hours</button>
+      <button type="button" class="btn-primary" (click)="leaveOpen.set(true)"><app-icon name="calendar-off" [size]="14" />Apply leave</button>
+    }
+  </app-page-header>
+
+  <!-- Tabs + week -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2">
+    <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'attendance' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'attendance'" (click)="tab.set('attendance')">Attendance</button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'productivity' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'productivity'" (click)="tab.set('productivity')">Productivity</button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'requests' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'requests'" (click)="tab.set('requests')">
+        Leave &amp; corrections
+        @if (pendingForMe()) {
+          <span class="ml-1 rounded-full bg-amber-700 px-1.5 text-[10px] font-semibold text-white">{{ pendingForMe() }}</span>
+        }
+      </button>
+    </div>
+    @if (tab() !== 'requests') {
+      <div class="flex items-center gap-1">
+        <button type="button" class="icon-btn" aria-label="Previous week" (click)="shiftWeek(-1)"><app-icon name="chevron-left" [size]="15" /></button>
+        <span class="min-w-[150px] text-center text-[12px] font-medium tabular-nums">{{ weekLabel() }}</span>
+        <button type="button" class="icon-btn" aria-label="Next week" (click)="shiftWeek(1)"><app-icon name="chevron-right" [size]="15" /></button>
+        @if (!isThisWeek()) {
+          <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="thisWeek()">This week</button>
+        }
+      </div>
+      @if (ext.visibleUsers().length > 1) {
+        <select class="input w-auto py-1 text-[12px]" aria-label="Filter by team" (change)="teamFilter.set($any($event.target).value)">
+          <option value="">All teams</option>
+          @for (t of teams(); track t.id) {
+            <option [value]="t.id" [selected]="t.id === teamFilter()">{{ t.name }}</option>
+          }
+        </select>
+        <div class="relative min-w-[140px] flex-1 sm:max-w-52">
+          <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+          <input class="input py-1 pl-8 text-[12px]" placeholder="Search people" aria-label="Search people" [value]="query()" (input)="query.set($any($event.target).value)" />
+        </div>
+      }
+    }
+    <span class="ml-auto flex items-center gap-1 text-[11px] text-ink/70">
+      @if (ext.loading()) {
+        <app-icon name="refresh" [size]="12" class="animate-spin" />Syncing…
+      } @else {
+        <app-icon name="plug" [size]="12" />{{ ext.attendanceSource.label }}
+        @if (canSetup()) {
+          · <a routerLink="/integrations" class="ml-1 text-brand hover:underline">Connections</a>
+        }
+      }
+    </span>
+  </div>
+
+  @if (ext.errors().attendance || ext.errors().productivity) {
+    <div class="mb-3 rounded-xl border border-red-200 bg-red-50/80 px-3 py-2 text-[12px] text-red-700" role="alert">
+      <strong>Couldn't reach the external system.</strong> {{ ext.errors().attendance || ext.errors().productivity }}
+      @if (canSetup()) {
+        <a routerLink="/integrations" class="ml-1 font-medium underline">Check connections</a>
+      }
+    </div>
+  }
+
+  @switch (tab()) {
+    <!-- ================= Attendance ================= -->
+    @case ('attendance') {
+      @let st = dayStats();
+      <div class="mb-1 text-[11px] text-ink/70">{{ day() === today ? 'Today' : dateLabel(day()) }}</div>
+      <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Punched in</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(meta.present.color) | readable">{{ st.weekend ? '—' : st.present }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">On leave</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(st.leave ? meta.leave.color : null) | readable">{{ st.leave }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">{{ day() === today ? 'Not in yet' : 'Absent' }}</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(st.notIn ? meta.absent.color : null) | readable">{{ st.notIn }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Late in</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(st.late ? meta.missed_punch.color : null) | readable">{{ st.late }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Missed punch</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(st.missed ? meta.missed_punch.color : null) | readable">{{ st.missed }}</div></div>
+        <button type="button" class="glass rounded-xl px-3 py-2 text-left hover:bg-white/70" (click)="tab.set('requests')">
+          <div class="text-[11px] text-ink/70">Waiting for your approval</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(pendingForMe() ? meta.missed_punch.color : null) | readable">{{ pendingForMe() }}</div>
+        </button>
+      </div>
+
+      @if (!people().length) {
+        <div class="glass rounded-xl p-8 text-center text-[12px] text-ink/70">No one to show. Attendance is tracked for internal and vendor staff.</div>
+      } @else {
+        <!-- Desktop: week grid -->
+        <div class="glass hidden overflow-hidden rounded-xl lg:block">
+          <table class="w-full table-fixed text-[11px]">
+            <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+              <tr class="border-b border-ink/10">
+                <th class="w-48 py-1.5 pl-3 pr-2 font-medium">Person</th>
+                @for (k of days(); track k) {
+                  <th class="py-1 pr-1 font-medium" [class.w-11]="isWeekend(k)">
+                    <button type="button" class="w-full rounded px-1 py-0.5 text-left hover:bg-white/70" [class.bg-white]="k === day()" [class.text-brand]="k === today" [attr.aria-pressed]="k === day()" (click)="day.set(k)">
+                      {{ dayName(k) }} <span class="tabular-nums">{{ dayNum(k) }}</span>
+                    </button>
+                  </th>
+                }
+                <th class="w-[72px] py-1.5 pr-3 text-right font-medium">Week</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (u of people(); track u.id) {
+                <tr class="border-b border-ink/[0.06] last:border-0">
+                  <td class="py-1 pl-3 pr-2">
+                    <div class="flex min-w-0 items-center gap-1.5">
+                      <app-avatar [user]="u" size="sm" />
+                      <div class="min-w-0">
+                        <div class="truncate text-[12px] font-medium">{{ u.name }}{{ isMine(u.id) ? ' (you)' : '' }}</div>
+                        <div class="truncate text-[10px] text-ink/70">{{ teamName(u) }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  @for (k of days(); track k) {
+                    @let a = cell(u, k);
+                    @let pl = plannedLeave(u, k);
+                    @let pend = pendingLeave(u, k);
+                    <td class="py-1 pr-1 align-top" [class.bg-ink/[0.03]]="isWeekend(k)" [class.bg-brand/[0.04]]="k === day() && !isWeekend(k)" [title]="cellTitle(a)">
+                      @if (a && a.status !== 'weekend') {
+                        @switch (a.status) {
+                          @case ('leave') {
+                            <span class="font-medium" [style.color]="(meta.leave.color) | readable">{{ leaveLabel(a.leaveType) }} leave</span>
+                          }
+                          @case ('absent') {
+                            @if (k === today) {
+                              <span class="text-ink/70">Not in yet</span>
+                            } @else {
+                              <span class="font-medium" [style.color]="(meta.absent.color) | readable">Absent</span>
+                            }
+                          }
+                          @case ('missed_punch') {
+                            <div class="tabular-nums">{{ timeOf(a.punchIn) }} – ?</div>
+                            @if (pendingCorrection(u, k)) {
+                              <div class="text-[10px]" [style.color]="(meta.missed_punch.color) | readable">Correction pending</div>
+                            } @else if (isMine(u.id)) {
+                              <button type="button" class="text-[10px] font-medium underline" [style.color]="(meta.missed_punch.color) | readable" (click)="openCorrection(k)">Missed punch · fix</button>
+                            } @else {
+                              <div class="text-[10px]" [style.color]="(meta.missed_punch.color) | readable">Missed punch</div>
+                            }
+                          }
+                          @default {
+                            <div class="tabular-nums" [style.color]="(a.late ? meta.missed_punch.color : null) | readable">
+                              {{ timeOf(a.punchIn) }} – {{ a.punchOut ? timeOf(a.punchOut) : '' }}
+                              @if (a.regularised) {
+                                <app-icon name="check" [size]="10" class="text-emerald-700" title="Corrected" />
+                              }
+                            </div>
+                            <div class="text-[10px]" [class]="a.punchOut && a.status === 'present' && a.workedMinutes < ext.config().dayMinutes ? 'text-amber-800' : 'text-ink/70'">
+                              {{ a.punchOut ? hours(a.workedMinutes) : 'working · ' + hours(a.workedMinutes) }}{{ a.status === 'half_day' ? ' · ½ leave' : '' }}
+                            </div>
+                          }
+                        }
+                      } @else if (pl) {
+                        <span class="font-medium italic" [style.color]="(meta.leave.color) | readable">{{ leaveLabel(pl.type) }} leave</span>
+                      }
+                      @if (pend && !pl && a?.status !== 'leave') {
+                        <div class="text-[10px] italic text-ink/70">Leave requested</div>
+                      }
+                    </td>
+                  }
+                  <td class="whitespace-nowrap py-1 pr-3 text-right text-[12px] font-medium tabular-nums">{{ hours(weekTotal(u)) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Phones / tablets: pick a day, list people -->
+        <div class="lg:hidden">
+          <div class="mb-2 grid grid-cols-7 gap-1" role="tablist" aria-label="Day">
+            @for (k of days(); track k) {
+              <button type="button" role="tab" class="glass rounded-lg py-1 text-center text-[11px]" [class]="k === day() ? 'bg-white font-semibold text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="k === day()" (click)="day.set(k)">
+                <div>{{ dayName(k) }}</div>
+                <div class="tabular-nums" [class.text-brand]="k === today">{{ dayNum(k) }}</div>
+              </button>
+            }
+          </div>
+          <ul class="glass divide-y divide-ink/[0.06] rounded-xl">
+            @for (u of people(); track u.id) {
+              @let a = cell(u, day());
+              @let pl = plannedLeave(u, day());
+              <li class="flex items-center gap-2 px-2.5 py-1.5">
+                <app-avatar [user]="u" size="sm" />
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-[12px] font-medium">{{ u.name }}{{ isMine(u.id) ? ' (you)' : '' }}</div>
+                  <div class="truncate text-[10px] text-ink/70">{{ teamName(u) ? teamName(u) + ' · ' : '' }}week {{ hours(weekTotal(u)) }}</div>
+                </div>
+                <div class="shrink-0 text-right text-[11px]">
+                  @if (isWeekend(day())) {
+                    <span class="text-ink/70">Weekend</span>
+                  } @else if (a) {
+                    @switch (a.status) {
+                      @case ('leave') { <span class="font-medium" [style.color]="(meta.leave.color) | readable">{{ leaveLabel(a.leaveType) }} leave</span> }
+                      @case ('absent') { <span [style.color]="(day() === today ? null : meta.absent.color) | readable" [class.text-ink/70]="day() === today">{{ day() === today ? 'Not in yet' : 'Absent' }}</span> }
+                      @case ('missed_punch') {
+                        <div class="tabular-nums">{{ timeOf(a.punchIn) }} – ?</div>
+                        @if (isMine(u.id) && !pendingCorrection(u, day())) {
+                          <button type="button" class="text-[10px] font-medium underline" [style.color]="(meta.missed_punch.color) | readable" (click)="openCorrection(day())">Missed punch · fix</button>
+                        } @else {
+                          <div class="text-[10px]" [style.color]="(meta.missed_punch.color) | readable">{{ pendingCorrection(u, day()) ? 'Correction pending' : 'Missed punch' }}</div>
+                        }
+                      }
+                      @default {
+                        <div class="tabular-nums" [style.color]="(a.late ? meta.missed_punch.color : null) | readable">{{ timeOf(a.punchIn) }} – {{ a.punchOut ? timeOf(a.punchOut) : '' }}</div>
+                        <div class="text-[10px] text-ink/70">{{ a.punchOut ? hours(a.workedMinutes) : 'working' }}{{ a.status === 'half_day' ? ' · ½ leave' : '' }}{{ a.regularised ? ' · corrected' : '' }}</div>
+                      }
+                    }
+                  } @else if (pl) {
+                    <span class="font-medium italic" [style.color]="(meta.leave.color) | readable">{{ leaveLabel(pl.type) }} leave</span>
+                  } @else {
+                    <span class="text-ink/70">—</span>
+                  }
+                </div>
+              </li>
+            }
+          </ul>
+        </div>
+        <p class="mt-2 text-[11px] text-ink/70">Times in amber are after {{ ext.config().lateAfter }}. Click a day to see its totals. Punches, leave and corrections come from the attendance system.</p>
+      }
+    }
+
+    <!-- ================= Productivity ================= -->
+    @case ('productivity') {
+      @let tot = prodTotals();
+      <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Attended (punches)</div><div class="text-[18px] font-semibold tabular-nums">{{ hours(tot.attended) }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Productive (laptop)</div><div class="text-[18px] font-semibold tabular-nums text-brand">{{ hours(tot.productive) }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Logged in nPro</div><div class="text-[18px] font-semibold tabular-nums">{{ hours(tot.logged) }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Productive share of laptop time</div><div class="text-[18px] font-semibold tabular-nums">{{ tot.pct === null ? '—' : tot.pct + '%' }}</div></div>
+      </div>
+
+      <div class="mb-2 flex flex-wrap items-center gap-3 text-[11px] text-ink/70">
+        <span class="flex items-center gap-1"><span class="h-2 w-3 rounded-sm bg-brand"></span>Productive</span>
+        <span class="flex items-center gap-1"><span class="h-2 w-3 rounded-sm bg-brand/35"></span>Other active</span>
+        <span class="flex items-center gap-1"><span class="h-2 w-3 rounded-sm bg-ink/15"></span>Idle</span>
+        <span class="flex items-center gap-1"><span class="h-2.5 w-0.5 bg-ink"></span>Logged in nPro</span>
+        <span class="flex items-center gap-1"><span class="h-2.5 w-0.5 bg-emerald-600"></span>Attended</span>
+      </div>
+
+      @if (!prodRows().length) {
+        <div class="glass rounded-xl p-8 text-center text-[12px] text-ink/70">No one to show.</div>
+      } @else {
+        <div class="glass hidden overflow-hidden rounded-xl md:block">
+          <table class="w-full table-fixed text-[12px]">
+            <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+              <tr class="border-b border-ink/10">
+                <th class="w-44 py-2 pl-3 pr-2 font-medium">Person</th>
+                <th class="py-2 pr-3 font-medium">Laptop time this week</th>
+                <th class="w-20 py-2 pr-2 text-right font-medium">Attended</th>
+                <th class="w-28 py-2 pr-2 text-right font-medium">Productive</th>
+                <th class="hidden w-16 py-2 pr-2 text-right font-medium lg:table-cell">Idle</th>
+                <th class="w-20 py-2 pr-2 text-right font-medium">Logged</th>
+                <th class="w-28 py-2 pr-3 text-right font-medium">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of prodRows(); track r.user.id) {
+                <tr class="border-b border-ink/[0.06] last:border-0">
+                  <td class="py-1.5 pl-3 pr-2">
+                    <div class="flex min-w-0 items-center gap-1.5"><app-avatar [user]="r.user" size="sm" /><span class="truncate font-medium">{{ r.user.name }}</span></div>
+                  </td>
+                  <td class="py-1.5 pr-3">
+                    <div class="relative h-3.5" [title]="'Productive ' + hours(r.productive) + ' · active ' + hours(r.active) + ' · idle ' + hours(r.idle)">
+                      <div class="absolute inset-0 flex overflow-hidden rounded-sm bg-ink/[0.03]">
+                        <div class="h-full bg-brand" [style.width]="pctOf(r.productive)"></div>
+                        <div class="h-full bg-brand/35" [style.width]="pctOf(r.active - r.productive)"></div>
+                        <div class="h-full bg-ink/15" [style.width]="pctOf(r.idle)"></div>
+                      </div>
+                      @if (r.attended) {
+                        <div class="absolute -inset-y-0.5 w-0.5 bg-emerald-600" [style.left]="pctOf(r.attended)"></div>
+                      }
+                      @if (r.logged) {
+                        <div class="absolute -inset-y-0.5 w-0.5 bg-ink" [style.left]="pctOf(r.logged)"></div>
+                      }
+                    </div>
+                  </td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ hours(r.attended) }}</td>
+                  <td class="whitespace-nowrap py-1.5 pr-2 text-right font-medium tabular-nums text-brand">{{ hours(r.productive) }}<span class="ml-1 text-[10px] font-normal text-ink/70">{{ r.pct === null ? '' : r.pct + '%' }}</span></td>
+                  <td class="hidden py-1.5 pr-2 text-right tabular-nums text-ink/70 lg:table-cell">{{ hours(r.idle) }}</td>
+                  <td class="py-1.5 pr-2 text-right tabular-nums">{{ hours(r.logged) }}</td>
+                  <td class="py-1.5 pr-3 text-right text-[11px]">
+                    @if (r.flag === 'over') {
+                      <span class="text-amber-800" title="More hours logged on tickets than productive laptop time">Logged &gt; productive</span>
+                    } @else if (r.flag === 'under') {
+                      <span class="text-ink/70" title="Less than half of the productive time is logged on tickets">Under-logged</span>
+                    } @else if (!r.laptop) {
+                      <span class="text-ink/70">No laptop data</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <ul class="space-y-2 md:hidden">
+          @for (r of prodRows(); track r.user.id) {
+            <li class="glass rounded-xl p-2.5">
+              <div class="mb-1.5 flex items-center gap-1.5">
+                <app-avatar [user]="r.user" size="sm" />
+                <span class="truncate text-[12px] font-medium">{{ r.user.name }}</span>
+                @if (r.flag === 'over') {
+                  <span class="ml-auto text-[10px] text-amber-800">Logged &gt; productive</span>
+                } @else if (r.flag === 'under') {
+                  <span class="ml-auto text-[10px] text-ink/70">Under-logged</span>
+                }
+              </div>
+              <div class="relative mb-1.5 h-3">
+                <div class="absolute inset-0 flex overflow-hidden rounded-sm bg-ink/[0.03]">
+                  <div class="h-full bg-brand" [style.width]="pctOf(r.productive)"></div>
+                  <div class="h-full bg-brand/35" [style.width]="pctOf(r.active - r.productive)"></div>
+                  <div class="h-full bg-ink/15" [style.width]="pctOf(r.idle)"></div>
+                </div>
+                @if (r.attended) { <div class="absolute -inset-y-0.5 w-0.5 bg-emerald-600" [style.left]="pctOf(r.attended)"></div> }
+                @if (r.logged) { <div class="absolute -inset-y-0.5 w-0.5 bg-ink" [style.left]="pctOf(r.logged)"></div> }
+              </div>
+              <div class="grid grid-cols-3 text-[11px]">
+                <div><div class="text-ink/70">Attended</div><div class="tabular-nums">{{ hours(r.attended) }}</div></div>
+                <div><div class="text-ink/70">Productive</div><div class="tabular-nums text-brand">{{ hours(r.productive) }}</div></div>
+                <div><div class="text-ink/70">Logged</div><div class="tabular-nums">{{ hours(r.logged) }}</div></div>
+              </div>
+            </li>
+          }
+        </ul>
+        <p class="mt-2 text-[11px] text-ink/70">Laptop time comes from the productivity tracker; logged hours are the time entries in nPro for the same week.</p>
+      }
+    }
+
+    <!-- ================= Leave & corrections ================= -->
+    @case ('requests') {
+      @if (myBalance(); as b) {
+        <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Casual leave left · {{ b.year }}</div><div class="text-[18px] font-semibold tabular-nums">{{ b.casual.allowed - b.casual.used }} <span class="text-[11px] font-normal text-ink/70">of {{ b.casual.allowed }}</span></div></div>
+          <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Sick leave left · {{ b.year }}</div><div class="text-[18px] font-semibold tabular-nums">{{ b.sick.allowed - b.sick.used }} <span class="text-[11px] font-normal text-ink/70">of {{ b.sick.allowed }}</span></div></div>
+        </div>
+      }
+
+      <div class="glass mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl p-2">
+        <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist" aria-label="Whose requests">
+          @if (approvees().length) {
+            <button type="button" role="tab" class="rounded-md px-2.5 py-1" [class]="reqScope() === 'approve' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="reqScope() === 'approve'" (click)="reqScope.set('approve')">To approve</button>
+          }
+          @if (tracked()) {
+            <button type="button" role="tab" class="rounded-md px-2.5 py-1" [class]="reqScope() === 'mine' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="reqScope() === 'mine'" (click)="reqScope.set('mine')">Mine</button>
+          }
+          <button type="button" role="tab" class="rounded-md px-2.5 py-1" [class]="reqScope() === 'all' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="reqScope() === 'all'" (click)="reqScope.set('all')">Everyone I can see</button>
+        </div>
+        <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70"><input type="checkbox" class="accent-brand" [checked]="pendingOnly()" (change)="pendingOnly.set($any($event.target).checked)" /> Pending only</label>
+      </div>
+
+      @if (!requests().length) {
+        <div class="glass rounded-xl p-8 text-center">
+          <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="calendar-off" [size]="18" /></div>
+          <p class="text-[13px] font-medium">No requests here</p>
+          <p class="text-[12px] text-ink/70">Leave applications and hour corrections show up here for the person's manager to approve.</p>
+        </div>
+      } @else {
+        <ul class="glass divide-y divide-ink/[0.06] rounded-xl">
+          @for (r of requests(); track r.req.id) {
+            @let sm = statusMeta[r.req.status];
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+              <div class="flex min-w-0 flex-1 basis-64 items-center gap-2">
+                <app-avatar [user]="r.user" size="sm" />
+                <div class="min-w-0">
+                  <div class="text-[12px] sm:truncate">
+                    <span class="font-medium">{{ r.user?.name }}</span>
+                    @if (r.kind === 'leave') {
+                      @let l = r.req;
+                      · {{ leaveLabel(l.type) }} leave · <span class="tabular-nums">{{ leaveRange(l) }}</span>
+                      <span class="ml-1 text-ink/70">({{ l.halfDay ? 'half day' : leaveDays(l) + ' day' + (leaveDays(l) === 1 ? '' : 's') }})</span>
+                    } @else {
+                      @let g = r.req;
+                      · Hours correction · <span class="tabular-nums">{{ dateLabel(g.date) }}, {{ timeOf(g.punchIn) }} – {{ timeOf(g.punchOut) }}</span>
+                    }
+                  </div>
+                  <div class="truncate text-[11px] text-ink/70">
+                    “{{ r.req.reason }}” · asked {{ r.req.appliedAt | date: 'MMM d' }}{{ r.req.decidedBy ? ' · ' + sm.label.toLowerCase() + ' by ' + deciderName(r.req.decidedBy) : '' }}
+                  </div>
+                </div>
+              </div>
+              <span class="pill py-0 text-[11px]" [style.color]="(sm.color) | readable">{{ sm.label }}</span>
+              @if (r.req.status === 'pending') {
+                <div class="flex gap-1">
+                  @if (ext.canApprove(r.req.userId)) {
+                    <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="decide(r, 'rejected')">Reject</button>
+                    <button type="button" class="btn-primary px-2 py-0.5 text-[11px]" (click)="decide(r, 'approved')">Approve</button>
+                  }
+                  @if (isMine(r.req.userId)) {
+                    <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="withdraw(r)">Withdraw</button>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+        <p class="mt-2 text-[11px] text-ink/70">Managers approve requests from the people who report to them; admins can approve anyone's. Decisions are sent back to the attendance system.</p>
+      }
+    }
+  }
+
+  <app-leave-form [open]="leaveOpen()" (closed)="leaveOpen.set(false)" (saved)="showToast($event)" />
+  <app-correction-form [open]="correctionOpen()" [day]="correctionDay()" (closed)="correctionOpen.set(false)" (saved)="showToast($event)" />
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

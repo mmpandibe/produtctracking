@@ -1,0 +1,253 @@
+<div class="mx-auto max-w-[1400px]">
+  <app-page-header heading="Tickets" [sub]="visible().length + ' of ' + store.issues().length">
+    <button type="button" class="btn-primary" (click)="openCreate()"><app-icon name="plus" [size]="15" /> Create ticket</button>
+  </app-page-header>
+
+  <!-- One filter bar: status dropdown + filters on the left, search on the right -->
+  <div class="glass mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+    <select class="input w-auto" aria-label="Filter by status" (change)="statusFilter.set(value($event))">
+      <option value="">All statuses ({{ baseCount() }})</option>
+      @for (s of statuses(); track s.id) {
+        <option [value]="s.id" [selected]="s.id === statusFilter()">{{ s.name }} ({{ statusCounts()[s.id] ?? 0 }})</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Filter by product" (change)="productFilter.set(value($event))">
+      <option value="">All products</option>
+      @for (p of store.products(); track p.id) {
+        <option [value]="p.id" [selected]="p.id === productFilter()">{{ p.name }}{{ p.archived ? ' (archived)' : '' }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Filter by client" (change)="clientFilter.set(value($event))">
+      <option value="">All clients</option>
+      @for (c of store.clients(); track c.id) {
+        <option [value]="c.id" [selected]="c.id === clientFilter()">{{ c.name }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Filter by assignee" (change)="assigneeFilter.set(value($event))">
+      <option value="">Anyone</option>
+      <option value="me" [selected]="assigneeFilter() === 'me'">Assigned to me</option>
+      <option value="none" [selected]="assigneeFilter() === 'none'">Unassigned</option>
+      @for (u of store.users(); track u.id) {
+        <option [value]="u.id" [selected]="u.id === assigneeFilter()">{{ u.name }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Filter by priority" (change)="priorityFilter.set(value($event))">
+      <option value="">Any priority</option>
+      @for (p of priorities; track p.id) {
+        <option [value]="p.id" [selected]="p.id === priorityFilter()">{{ p.label }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Filter by type" (change)="typeFilter.set(value($event))">
+      <option value="">All types</option>
+      @for (t of types; track t.id) {
+        <option [value]="t.id" [selected]="t.id === typeFilter()">{{ t.label }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Sort tickets" (change)="sort.set($any(value($event)))">
+      <option value="updated" [selected]="sort() === 'updated'">↕ Updated</option>
+      <option value="created" [selected]="sort() === 'created'">↕ Newest</option>
+      <option value="priority" [selected]="sort() === 'priority'">↕ Priority</option>
+      <option value="due" [selected]="sort() === 'due'">↕ Due date</option>
+    </select>
+    @if (hasFilters()) {
+      <button type="button" class="px-1 text-[12px] text-brand hover:underline" (click)="clearFilters()">Clear</button>
+    }
+    <div class="relative ml-auto min-w-[150px] flex-1 sm:max-w-64">
+      <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+      <input class="input pl-8" placeholder="Search tickets" aria-label="Search tickets by key, summary or label" [value]="query()" (input)="query.set(value($event))" />
+    </div>
+  </div>
+
+  @if (visible().length === 0) {
+    <div class="glass rounded-xl p-8 text-center">
+      <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70">
+        <app-icon name="ticket" [size]="18" />
+      </div>
+      @if (store.issues().length === 0) {
+        <p class="text-[13px] font-medium">No tickets yet</p>
+        <p class="mb-3 text-[12px] text-ink/70">Create the first ticket for one of your products.</p>
+        <button type="button" class="btn-primary" (click)="openCreate()"><app-icon name="plus" [size]="15" /> Create ticket</button>
+      } @else {
+        <p class="text-[13px] font-medium">No tickets match these filters</p>
+        <p class="mb-3 text-[12px] text-ink/70">Try removing a filter.</p>
+        <button type="button" class="btn-secondary" (click)="clearFilters()">Clear filters</button>
+      }
+    </div>
+  } @else {
+    <!-- Dense grid (tablet and up) -->
+    <div class="glass hidden overflow-hidden rounded-xl md:block">
+      <table class="w-full table-fixed text-[12px]">
+        <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+          <tr class="border-b border-ink/10">
+            <th class="w-[72px] py-1.5 pl-3 pr-2 font-medium">Key</th>
+            <th class="py-1.5 pr-2 font-medium">Summary</th>
+            <th class="hidden w-28 py-1.5 pr-2 font-medium lg:table-cell">Product</th>
+            <th class="w-28 py-1.5 pr-2 font-medium">Sprint</th>
+            <th class="w-40 py-1.5 pr-2 font-medium">Status</th>
+            <th class="hidden w-[72px] py-1.5 pr-2 font-medium lg:table-cell">Priority</th>
+            <th class="w-9 py-1.5 pr-2 font-medium xl:w-32"><span class="hidden xl:inline">Assignee</span></th>
+            <th class="w-[72px] py-1.5 pr-2 font-medium">Due</th>
+            <th class="hidden w-12 py-1.5 pr-2 text-center font-medium xl:table-cell" title="Round">Round</th>
+            <th class="hidden w-16 py-1.5 pr-2 font-medium xl:table-cell">Done</th>
+            <th class="w-8 py-1.5"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (i of visible(); track i.id) {
+            @let t = typeOf(i.type);
+            @let pr = priorityOf(i.priority);
+            @let st = statusOf(i);
+            @let product = productOf(i);
+            @let sprint = sprintOf(i);
+            @let parent = parentOf(i);
+            @let n = countsOf(i);
+            @let assignee = store.userById(i.assigneeId);
+            <tr class="border-b border-ink/[0.06] transition last:border-0 hover:bg-white/60">
+              <td class="py-1 pl-3 pr-2">
+                <a class="font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', i.key]">{{ i.key }}</a>
+              </td>
+              <td class="py-1 pr-2">
+                <div class="flex min-w-0 items-center gap-1.5">
+                  <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded" [style.color]="(t.color) | readable" [style.background]="tint(t.color)" [title]="t.label">
+                    <app-icon [name]="t.icon" [size]="11" />
+                  </span>
+                  <a class="truncate font-medium hover:text-brand" [routerLink]="['/tickets', i.key]" [title]="i.summary">{{ i.summary }}</a>
+                  @if (parent) {
+                    <span class="flex shrink-0 items-center gap-0.5 text-[10px] text-ink/70" [title]="'Child of ' + parent.key + ': ' + parent.summary">
+                      <app-icon name="corner-down-right" [size]="10" />{{ parent.key }}
+                    </span>
+                  }
+                  @if (n.files) {
+                    <span class="flex shrink-0 items-center gap-0.5 text-[10px] text-ink/70" [title]="n.files + ' attachment(s)'"><app-icon name="paperclip" [size]="10" />{{ n.files }}</span>
+                  }
+                  @if (n.comments) {
+                    <span class="flex shrink-0 items-center gap-0.5 text-[10px] text-ink/70" [title]="n.comments + ' comment(s)'"><app-icon name="message" [size]="10" />{{ n.comments }}</span>
+                  }
+                </div>
+              </td>
+              <td class="hidden py-1 pr-2 lg:table-cell">
+                <span class="flex min-w-0 items-center gap-1.5">
+                  <span class="h-1.5 w-1.5 shrink-0 rounded-full" [style.background]="product?.color"></span>
+                  <span class="truncate">{{ product?.name }}</span>
+                </span>
+              </td>
+              <td class="truncate py-1 pr-2" [class.text-ink/70]="!sprint" [title]="sprint?.name ?? 'Backlog'">
+                {{ sprint?.name ?? 'Backlog' }}
+              </td>
+              <td class="py-1 pr-2">
+                <label class="relative inline-flex max-w-full items-center" [style.color]="(st.color) | readable">
+                  <span class="sr-only">Status of {{ i.key }}</span>
+                  <select class="pill max-w-full cursor-pointer appearance-none truncate py-0 pr-5 text-[11px] focus:ring-2 focus:ring-brand/30" (change)="setStatus(i, $event)">
+                    @for (s of store.allowedStatuses(i); track s.id) {
+                      <option class="text-ink" [value]="s.id" [selected]="s.id === i.statusId">{{ s.name }}</option>
+                    }
+                  </select>
+                  <app-icon name="chevron-down" [size]="10" class="pointer-events-none absolute right-1.5" />
+                </label>
+              </td>
+              <td class="hidden py-1 pr-2 lg:table-cell">
+                <span class="pill py-0 text-[10.5px]" [style.color]="(pr.color) | readable">{{ pr.label }}</span>
+              </td>
+              <td class="py-1 pr-2">
+                <div class="flex min-w-0 items-center gap-1.5">
+                  <app-avatar [user]="assignee" size="sm" />
+                  <span class="hidden truncate xl:inline" [class.text-ink/70]="!assignee">{{ assignee?.name ?? 'Unassigned' }}</span>
+                </div>
+              </td>
+              <td class="py-1 pr-2 tabular-nums" [class.text-red-700]="isOverdue(i)" [class.font-medium]="isOverdue(i)" [title]="isOverdue(i) ? 'Overdue' : ''">
+                {{ i.dueDate ? (i.dueDate | date: 'MMM d') : '—' }}
+              </td>
+              <td class="hidden py-1 pr-2 text-center tabular-nums xl:table-cell" [class.text-ink/70]="!i.round">{{ i.round ?? '—' }}</td>
+              <td class="hidden py-1 pr-2 xl:table-cell">
+                <div class="flex items-center gap-1">
+                  <div class="h-1 w-7 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full bg-pastel-green" [style.width.%]="i.progress ?? 0"></div></div>
+                  <span class="text-[10.5px] tabular-nums text-ink/70">{{ i.progress ?? 0 }}%</span>
+                </div>
+              </td>
+              <td class="py-1 pr-1.5 text-right">
+                <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Actions for ' + i.key" (click)="toggleMenu(i.id, $event)">
+                  <app-icon name="ellipsis" [size]="15" />
+                </button>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Phones: compact cards -->
+    <div class="space-y-2 md:hidden">
+      @for (i of visible(); track i.id) {
+        @let t = typeOf(i.type);
+        @let pr = priorityOf(i.priority);
+        @let st = statusOf(i);
+        @let sprint = sprintOf(i);
+        @let assignee = store.userById(i.assigneeId);
+        <article class="glass rounded-xl p-2.5">
+          <div class="flex items-start gap-2">
+            <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded" [style.color]="(t.color) | readable" [style.background]="tint(t.color)">
+              <app-icon [name]="t.icon" [size]="12" />
+            </span>
+            <a class="min-w-0 flex-1" [routerLink]="['/tickets', i.key]">
+              <div class="text-[13px] font-semibold">{{ i.summary }}</div>
+              <div class="text-[11px] text-ink/70">
+                <span class="font-mono">{{ i.key }}</span> · {{ sprint?.name ?? 'Backlog' }}@if (i.dueDate) { · due {{ i.dueDate | date: 'MMM d' }} }
+              </div>
+            </a>
+            <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white" [attr.aria-label]="'Actions for ' + i.key" (click)="toggleMenu(i.id, $event)">
+              <app-icon name="ellipsis" [size]="15" />
+            </button>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-1.5">
+            <span class="pill" [style.color]="(st.color) | readable">{{ st.name }}</span>
+            <span class="pill" [style.color]="(pr.color) | readable">{{ pr.label }}</span>
+            <span class="ml-auto flex items-center gap-1 text-[11px] text-ink/70"><app-avatar [user]="assignee" size="sm" />{{ assignee?.name ?? 'Unassigned' }}</span>
+          </div>
+        </article>
+      }
+    </div>
+  }
+
+  <!-- Row action menu (fixed overlay) -->
+  @if (menuIssue(); as i) {
+    <div class="fixed inset-0 z-30" (click)="menuFor.set(null)"></div>
+    <div class="glass-strong fixed z-40 w-40 rounded-xl p-1" [style.top.px]="menuPos().top" [style.left.px]="menuPos().left" role="menu">
+      <a role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" [routerLink]="['/tickets', i.key]" (click)="menuFor.set(null)">
+        <app-icon name="file-text" [size]="13" /> Open details
+      </a>
+      @if (store.canEditIssue(i)) {
+        <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="openEdit(i)">
+          <app-icon name="pencil" [size]="13" /> Edit
+        </button>
+      }
+      @if (store.canDeleteIssue(i)) {
+        <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-red-700 hover:bg-red-50" (click)="askDelete(i)">
+          <app-icon name="trash" [size]="13" /> Delete
+        </button>
+      }
+    </div>
+  }
+
+  <app-ticket-form
+    [open]="formOpen()"
+    [issue]="editing()"
+    [defaultProductId]="productFilter() || undefined"
+    (closed)="formOpen.set(false)"
+    (saved)="onSaved($event)"
+  />
+
+  <app-modal [open]="!!deleting()" heading="Delete ticket?" (closed)="deleting.set(undefined)">
+    <p class="text-[13px] text-ink/70">
+      <strong class="text-ink">{{ deleting()?.key }}</strong> “{{ deleting()?.summary }}” and its comments, attachments and logged hours will be
+      deleted. Child tickets keep existing without a parent. This cannot be undone.
+    </p>
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deleting.set(undefined)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="confirmDelete()">Delete ticket</button>
+    </div>
+  </app-modal>
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

@@ -1,0 +1,166 @@
+<a href="#main-content" class="skip-link" (click)="skipToMain($event)">Skip to main content</a>
+<!-- Sidebar: labelled on desktop (collapsible to an icon rail), drawer on phones -->
+<aside
+  aria-label="Main menu"
+  class="glass fixed inset-y-2.5 print:hidden left-2.5 z-40 flex w-60 -translate-x-[110%] flex-col rounded-2xl transition-[translate,width] lg:sticky lg:inset-auto lg:top-3 lg:h-[calc(100dvh-1.5rem)] lg:shrink-0 lg:translate-x-0 lg:self-start"
+  [class.lg:w-16]="collapsed()"
+  [class.lg:w-60]="!collapsed()"
+  [style.translate]="mobileOpen() ? '0' : null"
+>
+  <div class="flex h-14 shrink-0 items-center gap-2.5 px-4" [class.lg:justify-center]="collapsed()" [class.lg:px-0]="collapsed()">
+    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-[12px] font-bold text-white shadow-md shadow-brand/30">nP</div>
+    <span class="text-base font-semibold tracking-tight" [class.lg:hidden]="collapsed()">nPro</span>
+    <button type="button" class="ml-auto text-ink/70 hover:text-ink lg:hidden" aria-label="Close menu" (click)="mobileOpen.set(false)">
+      <app-icon name="x" [size]="18" />
+    </button>
+  </div>
+  <div class="mx-4 h-px bg-ink/10"></div>
+
+  <nav class="no-scrollbar flex-1 overflow-y-auto px-2.5 py-2" (scroll)="tip.set(null)">
+    @for (section of visibleSections(); track section; let first = $first) {
+      <div class="section-title px-2 pb-1 pt-3" [class.lg:hidden]="collapsed()">{{ section }}</div>
+      @if (!first) {
+        <div class="mx-auto my-2 hidden h-px w-6 bg-ink/10" [class.lg:block]="collapsed()"></div>
+      }
+      @for (n of itemsIn(section); track n.path) {
+        <a
+          [routerLink]="'/' + n.path"
+          routerLinkActive="!bg-white !text-ink font-medium shadow-sm"
+          class="mb-0.5 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-ink/70 transition hover:bg-white/60 hover:text-ink"
+          [class.lg:justify-center]="collapsed()"
+          [class.lg:px-0]="collapsed()"
+          [attr.aria-label]="n.label"
+          (mouseenter)="showTip($event, n)"
+          (mouseleave)="tip.set(null)"
+          (focus)="showTip($event, n)"
+          (blur)="tip.set(null)"
+          (click)="navigated()"
+        >
+          <app-icon [name]="n.icon" [size]="17" />
+          <span class="flex-1 truncate" [class.lg:hidden]="collapsed()">{{ n.label }}</span>
+          @if (isSoon(n)) {
+            <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-ink/20" title="Coming soon" role="img" aria-label="coming soon" [class.lg:hidden]="collapsed()"></span>
+          }
+        </a>
+      }
+    }
+  </nav>
+
+  <div class="mx-4 h-px bg-ink/10"></div>
+  <div class="flex items-center gap-1.5 p-2.5" [class.lg:flex-col]="collapsed()">
+    <button
+      type="button"
+      class="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-0.5 text-left hover:bg-white/60"
+      [class.lg:flex-none]="collapsed()"
+      aria-haspopup="dialog"
+      [attr.aria-expanded]="switcherOpen()"
+      [title]="store.remote() ? 'Account' : 'Switch person (demo sign-in)'"
+      (click)="openSwitcher($event)"
+    >
+      <app-avatar [user]="store.currentUser()" />
+      <div class="min-w-0 flex-1" [class.lg:hidden]="collapsed()">
+        <div class="flex items-center gap-1 truncate text-[13px] font-medium">{{ store.currentUser().name }}<app-icon name="chevrons-up" [size]="12" class="shrink-0 text-ink/70" /></div>
+        <div class="truncate text-[11px] text-ink/70">{{ roleLabel() }} · Step {{ currentStep }}/18</div>
+      </div>
+    </button>
+    <button
+      type="button"
+      class="icon-btn hidden h-8 w-8 lg:inline-flex"
+      [attr.aria-label]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      [title]="collapsed() ? 'Expand sidebar' : 'Collapse sidebar'"
+      (click)="toggleCollapsed()"
+    >
+      <app-icon [name]="collapsed() ? 'panel-open' : 'panel-close'" [size]="17" />
+    </button>
+  </div>
+</aside>
+<!-- Signed-in-as switcher (stand-in for real login until Phase B) -->
+@if (switcherOpen()) {
+  <div class="fixed inset-0 z-[55]" (click)="switcherOpen.set(false)"></div>
+  <div class="glass-strong fixed z-[56] flex w-72 flex-col rounded-xl p-2" [style.left.px]="switcherPos().left" [style.bottom.px]="switcherPos().bottom" role="dialog" aria-label="Sign in as">
+    @if (store.remote()) {
+      <div class="mb-1.5 border-b border-ink/10 px-1 pb-2">
+        <div class="truncate text-[12px] font-medium">{{ store.currentUser().name }}</div>
+        <div class="truncate text-[11px] text-ink/70">{{ store.currentUser().email }} · {{ roleLabel() }}</div>
+        <button type="button" class="btn-secondary mt-1.5 w-full justify-center py-1 text-[12px]" (click)="signOut()">Sign out</button>
+      </div>
+    } @else {
+      <p class="mb-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[10px] text-amber-800">Local demo data in this browser — no nPro server found.</p>
+    }
+    @if (!store.remote() || session.demoSwitcher()) {
+    <div class="mb-1.5 flex items-center justify-between px-1">
+      <span class="section-title">Sign in as</span>
+      <span class="text-[10px] text-ink/70">{{ store.remote() ? 'Demo switcher (dev only)' : 'Demo' }}</span>
+    </div>
+    <input class="input mb-1.5 py-1 text-[12px]" placeholder="Search people" aria-label="Search people" [value]="switcherQuery()" (input)="switcherQuery.set($any($event.target).value)" />
+    <ul class="no-scrollbar max-h-[min(60vh,420px)] overflow-y-auto">
+      @for (g of switcherGroups(); track g.role.id) {
+        <li class="px-1 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide" [style.color]="(g.role.color) | readable">{{ g.role.label }}</li>
+        @for (u of g.users; track u.id) {
+          <li>
+            <button type="button" class="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-[12px] hover:bg-ink/5" [class.bg-brand/10]="u.id === store.currentUser().id" (click)="switchTo(u.id)">
+              <app-avatar [user]="u" size="sm" />
+              <span class="min-w-0 flex-1 truncate">{{ u.name }}</span>
+              <span class="shrink-0 truncate text-[10px] text-ink/70">{{ subtitle(u) }}</span>
+            </button>
+          </li>
+        }
+      } @empty {
+        <li class="px-1.5 py-2 text-[12px] text-ink/70">No one found</li>
+      }
+    </ul>
+    }
+  </div>
+}
+@if (switchToast()) {
+  <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ switchToast() }}</div>
+}
+@if (mobileOpen()) {
+  <div class="fixed inset-0 z-30 bg-slate-900/20 backdrop-blur-sm lg:hidden" (click)="mobileOpen.set(false)"></div>
+}
+
+<!-- Collapsed-rail hover label -->
+@if (tip(); as t) {
+  <div
+    class="pointer-events-none fixed z-[60] -translate-y-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] text-white shadow-lg"
+    [style.top.px]="t.top"
+    [style.left.px]="t.left"
+    role="tooltip"
+  >
+    {{ t.label }}
+  </div>
+}
+
+<!-- Main column: grows with content; the browser window scrolls -->
+<div class="flex min-w-0 flex-1 flex-col gap-3">
+  <header class="flex shrink-0 items-center gap-2 print:hidden">
+    <button type="button" class="icon-btn lg:hidden" aria-label="Open menu" (click)="mobileOpen.set(true)">
+      <app-icon name="menu" [size]="19" />
+    </button>
+    <app-global-search />
+    @if (timer(); as t) {
+      <div class="glass flex h-10 shrink-0 items-center gap-2 rounded-xl px-2.5 text-[12px]" role="status" aria-live="polite">
+        <span class="relative flex h-2 w-2"><span class="absolute h-full w-full animate-ping rounded-full bg-red-400 opacity-60"></span><span class="relative h-2 w-2 rounded-full bg-red-500"></span></span>
+        <a [routerLink]="['/tickets', t.key]" class="font-mono font-medium hover:text-brand" [title]="'Timer running on ' + t.key + ': ' + t.summary">{{ t.key }}</a>
+        <span class="font-mono tabular-nums text-ink/70">{{ t.elapsed }}</span>
+        <button type="button" class="rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-red-700" (click)="stopTimer()">Stop</button>
+      </div>
+    }
+    @if (timerToast()) {
+      <span class="hidden text-[12px] text-pastel-green sm:inline" role="status">{{ timerToast() }}</span>
+    }
+    <button type="button" class="icon-btn" aria-label="Notifications (coming soon)" title="Notifications — coming soon" disabled>
+      <app-icon name="bell" [size]="18" />
+    </button>
+  </header>
+
+  @if (store.syncError()) {
+    <div class="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50/90 px-3 py-2 text-[12px] text-red-700 print:hidden" role="alert">
+      <span class="min-w-0 flex-1"><strong>Not saved:</strong> {{ store.syncError() }} The latest data from the server is shown.</span>
+      <button type="button" class="icon-btn h-6 w-6" aria-label="Dismiss" (click)="store.syncError.set('')"><app-icon name="x" [size]="13" /></button>
+    </div>
+  }
+  <main id="main-content" tabindex="-1" class="flex-1 pb-3 outline-none">
+    <router-outlet />
+  </main>
+</div>

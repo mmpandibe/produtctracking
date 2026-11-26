@@ -1,0 +1,239 @@
+<div class="mx-auto max-w-[1400px] select-none" [class.cursor-grabbing]="!!drag()">
+  <app-page-header heading="Gantt & Roadmap" />
+
+  <!-- Toolbar -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+    <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'product' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'product'" (click)="tab.set('product')">Product Gantt</button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'roadmap' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'roadmap'" (click)="tab.set('roadmap')">All roadmaps</button>
+    </div>
+    @if (tab() === 'product') {
+      <select class="input w-auto" aria-label="Product" (change)="pickProduct($any($event.target).value)">
+        @for (p of store.products(); track p.id) {
+          @if (!p.archived) {
+            <option [value]="p.id" [selected]="p.id === productId()">{{ p.name }} ({{ p.key }})</option>
+          }
+        }
+      </select>
+      <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70">
+        <input type="checkbox" class="accent-brand" [checked]="showDone()" (change)="showDone.set($any($event.target).checked)" /> Done tickets
+      </label>
+    }
+    <div class="ml-auto flex flex-wrap items-center gap-1.5">
+      <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="group" aria-label="Zoom">
+        @for (z of zooms; track z.id) {
+          <button type="button" class="rounded-md px-2 py-1" [class]="zoom() === z.id ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-pressed]="zoom() === z.id" (click)="setZoom(z.id)">{{ z.label }}</button>
+        }
+      </div>
+      <div class="flex items-center gap-0.5">
+        <button type="button" class="icon-btn h-7 w-7" aria-label="Earlier" (click)="shift(-1)"><app-icon name="chevron-left" [size]="15" /></button>
+        <button type="button" class="btn-secondary px-2 py-1 text-[12px]" (click)="goToday()">Today</button>
+        <button type="button" class="icon-btn h-7 w-7" aria-label="Later" (click)="shift(1)"><app-icon name="chevron-right" [size]="15" /></button>
+      </div>
+      <span class="min-w-[150px] text-center text-[12px] font-medium tabular-nums text-ink/70">{{ windowLabel() }}</span>
+    </div>
+  </div>
+
+  <!-- Shared timeline header -->
+  <ng-template #headerRow let-label="label">
+    <div class="flex border-b border-ink/10 bg-white/40 text-[10px] text-ink/70">
+      <div class="w-28 shrink-0 px-2 py-1.5 font-medium sm:w-56 lg:w-64">{{ label }}</div>
+      <div #track class="relative h-7 flex-1 overflow-hidden" data-track>
+        @for (t of ticks(); track t.left; let idx = $index) {
+          <div class="absolute inset-y-0 border-l" [class]="t.major ? 'border-ink/20' : 'border-ink/10'" [style.left.%]="t.left">
+            @if (idx % labelEvery() === 0) {
+              <span class="absolute left-1 top-0.5 whitespace-nowrap" [class.font-semibold]="t.major">{{ t.label }}</span>
+            }
+          </div>
+        }
+        @if (todayPct() !== undefined) {
+          <span class="absolute bottom-0 z-10 -translate-x-1/2 rounded-t bg-red-500 px-1 text-[9px] font-semibold leading-3 text-white" [style.left.%]="todayPct()">Today</span>
+        }
+      </div>
+    </div>
+  </ng-template>
+
+  <!-- Grid lines + today line behind each row's bar -->
+  <ng-template #gridLines>
+    @for (w of weekends(); track w.left) {
+      <div class="absolute inset-y-0 bg-ink/[0.03]" [style.left.%]="w.left" [style.width.%]="w.width"></div>
+    }
+    @for (t of ticks(); track t.left) {
+      <div class="absolute inset-y-0 border-l" [class]="t.major ? 'border-ink/10' : 'border-ink/[0.05]'" [style.left.%]="t.left"></div>
+    }
+    @if (todayPct() !== undefined) {
+      <div class="absolute inset-y-0 z-[5] w-px bg-red-500/70" [style.left.%]="todayPct()"></div>
+    }
+  </ng-template>
+
+  @if (tab() === 'product') {
+    <!-- ================= Product Gantt ================= -->
+    @if (!rows().length) {
+      <div class="glass rounded-xl p-8 text-center">
+        <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="calendar-clock" [size]="18" /></div>
+        <p class="text-[13px] font-medium">Nothing to draw for {{ product()?.name ?? 'this product' }} yet</p>
+        <p class="text-[12px] text-ink/70">Give roadmaps, sprints or tickets start and due dates on the Backlog &amp; Sprints page.</p>
+        <a routerLink="/backlog" class="btn-primary mt-3 inline-flex">Open Backlog &amp; Sprints</a>
+      </div>
+    } @else {
+      <div class="glass overflow-hidden rounded-xl">
+        <ng-container *ngTemplateOutlet="headerRow; context: { label: product()?.name }" />
+        @for (row of rows(); track row.kind + row.id) {
+          @let bar = barOf(row);
+          <div class="group flex border-b border-ink/[0.05] last:border-0 hover:bg-white/40" [class.bg-white/30]="row.kind === 'roadmap'">
+            <!-- Label -->
+            <div class="flex w-28 shrink-0 items-center gap-1 py-1 pl-[calc(2px+var(--d)*6px)] pr-1 sm:w-56 sm:pl-[calc(6px+var(--d)*12px)] sm:pr-1.5 lg:w-64" [style.--d]="row.depth">
+              @if (row.collapsible) {
+                <button type="button" class="shrink-0 rounded text-ink/70 hover:text-ink" [attr.aria-label]="(collapsed().has(row.id) ? 'Expand ' : 'Collapse ') + row.label" [attr.aria-expanded]="!collapsed().has(row.id)" (click)="toggle(row)">
+                  <app-icon [name]="collapsed().has(row.id) ? 'chevron-right' : 'chevron-down'" [size]="13" />
+                </button>
+              } @else {
+                <span class="hidden w-[13px] shrink-0 sm:block"></span>
+              }
+              <span class="hidden shrink-0 sm:contents">
+              @switch (row.kind) {
+                @case ('roadmap') { <app-icon name="milestone" [size]="13" class="shrink-0" [style.color]="(row.color) | readable" /> }
+                @case ('sprint') { <app-icon name="calendar-range" [size]="12" class="shrink-0 text-brand" /> }
+                @case ('issue') { <app-icon [name]="$any(row.icon)" [size]="12" class="shrink-0 text-ink/70" /> }
+                @default { <app-icon name="layers" [size]="12" class="shrink-0 text-ink/70" /> }
+              }
+              </span>
+              <div class="min-w-0 flex-1">
+                @if (row.link) {
+                  <a [routerLink]="row.link" class="block truncate text-[12px] hover:text-brand" [class.line-through]="row.done" [class.text-ink/70]="row.done">{{ row.label }}</a>
+                } @else {
+                  <div class="truncate text-[12px]" [class.font-semibold]="row.kind === 'roadmap' || row.kind === 'group'" [class.font-medium]="row.kind === 'sprint'" [class.text-ink/70]="row.kind === 'group'">{{ row.label }}</div>
+                }
+                @if (row.kind !== 'group') {
+                  <div class="hidden truncate text-[10px] text-ink/70 sm:block">{{ row.sub }} · {{ dateLabel(row) }}</div>
+                }
+              </div>
+            </div>
+            <!-- Track -->
+            <div class="relative min-h-9 flex-1 overflow-hidden" data-track>
+              <ng-container *ngTemplateOutlet="gridLines" />
+              @if (bar) {
+                <div
+                  class="absolute top-1/2 z-10 flex -translate-y-1/2 items-center overflow-hidden text-[10px] font-medium text-white shadow-sm focus-visible:ring-2 focus-visible:ring-brand/50"
+                  [class]="(row.kind === 'roadmap' ? 'h-5' : row.kind === 'sprint' ? 'h-4' : 'h-3.5') + (bar.clipStart ? ' rounded-l-none' : ' rounded-l-md') + (bar.clipEnd ? ' rounded-r-none' : ' rounded-r-md') + (row.editable ? ' cursor-grab' : ' cursor-default')"
+                  [class.ring-2]="drag()?.row?.id === row.id"
+                  [class.ring-brand]="drag()?.row?.id === row.id"
+                  [style.left.%]="bar.left"
+                  [style.width.%]="bar.width"
+                  [style.background]="'color-mix(in srgb, ' + row.color + ' ' + (row.inherited ? 18 : row.done ? 25 : 45) + '%, white)'"
+                  [style.border]="row.inherited ? '1px dashed ' + row.color : null"
+                  [attr.tabindex]="row.editable && barPx(bar) >= 24 ? 0 : null"
+                  [attr.aria-hidden]="(!row.editable || barPx(bar) < 24) && row.link ? true : null"
+                  [attr.role]="row.editable && barPx(bar) >= 24 ? 'button' : null"
+                  [attr.aria-label]="row.label + (row.kind !== 'issue' && row.progress != null ? ' · ' + row.progress + '%' : '') + ', ' + dateLabel(row) + (row.editable ? '. Arrow keys move it by a day, Shift + arrows change the end.' : '')"
+                  [title]="row.label + '\n' + dateLabel(row) + (row.progress != null ? ' · ' + row.progress + '% done' : '') + (row.inherited ? '\nUses its sprint’s dates (no dates of its own)' : '') + (row.editable ? '\nDrag to move · drag an edge to change start or end' : '')"
+                  (pointerdown)="startDrag($event, row, 'move')"
+                  (click)="open(row)"
+                  (keydown.enter)="open(row)"
+                  (keydown)="keyMove($event, row)"
+                >
+                  <!-- Progress fill -->
+                  @if (row.progress) {
+                    <div class="absolute inset-y-0 left-0" [style.width.%]="row.progress" [style.background]="row.color"></div>
+                  }
+                  @if (row.kind !== 'issue') {
+                    <span class="relative truncate px-1.5 text-ink [text-shadow:0_0_2px_white]">{{ row.label }}{{ row.progress != null ? ' · ' + row.progress + '%' : '' }}</span>
+                  }
+                  @if (row.editable) {
+                    @if (!bar.clipStart) {
+                      <span class="absolute inset-y-0 left-0 z-10 w-1.5 cursor-ew-resize bg-ink/0 hover:bg-ink/25" aria-hidden="true" (pointerdown)="startDrag($event, row, 'start')"></span>
+                    }
+                    @if (!bar.clipEnd) {
+                      <span class="absolute inset-y-0 right-0 z-10 w-1.5 cursor-ew-resize bg-ink/0 hover:bg-ink/25" aria-hidden="true" (pointerdown)="startDrag($event, row, 'end')"></span>
+                    }
+                  }
+                </div>
+              } @else if (row.start !== undefined) {
+                <!-- Outside the window: jump to it -->
+                <button type="button" class="absolute top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] text-ink/70 shadow-sm hover:text-brand" [class]="row.start! < range().start ? 'left-1' : 'right-1'" (click)="focus(row)">
+                  @if (row.start! < range().start) {
+                    <app-icon name="chevron-left" [size]="10" />
+                  }
+                  {{ dateLabel(row).split(' · ')[0] }}
+                  @if (row.start! >= range().start) {
+                    <app-icon name="chevron-right" [size]="10" />
+                  }
+                </button>
+              } @else if (row.kind !== 'group') {
+                <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-ink/70">No dates</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+      <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink/70">
+        <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-6 rounded-sm bg-brand/40"><span class="block h-full w-3 rounded-sm bg-brand"></span></span> Darker part = % done</span>
+        <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-6 rounded-sm border border-dashed border-ink/40 bg-ink/10"></span> Ticket without its own dates (uses its sprint)</span>
+        <span class="flex items-center gap-1.5"><span class="inline-block h-3 w-px bg-red-500"></span> Today</span>
+        <span>Drag a bar to move it, drag its edge to change the start or end. Completed sprints stay fixed.</span>
+        @if (undated()) {
+          <span>{{ undated() }} backlog ticket(s) have no dates and aren't drawn.</span>
+        }
+      </div>
+    }
+  } @else {
+    <!-- ================= Roadmap timeline (all products) ================= -->
+    <div class="glass overflow-hidden rounded-xl">
+      <ng-container *ngTemplateOutlet="headerRow; context: { label: 'Product' }" />
+      @for (l of lanes(); track l.product.id) {
+        <div class="flex border-b border-ink/[0.06] last:border-0">
+          <div class="flex w-28 shrink-0 items-start gap-1.5 px-2 py-2 sm:w-56 lg:w-64">
+            <span class="mt-1 h-2 w-2 shrink-0 rounded-full" [style.background]="l.product.color"></span>
+            <div class="min-w-0">
+              <button type="button" class="block max-w-full truncate text-left text-[12px] font-semibold hover:text-brand" (click)="openProduct(l.product.id)">{{ l.product.name }}</button>
+              <div class="hidden truncate text-[10px] text-ink/70 sm:block">{{ l.product.key }}{{ l.division ? ' · ' + l.division : '' }}{{ l.undated ? ' · ' + l.undated + ' undated' : '' }}</div>
+            </div>
+          </div>
+          <div class="relative flex-1 overflow-hidden py-1.5" data-track [style.min-height.px]="Math.max(1, l.lanes.length) * 26 + 12">
+            <ng-container *ngTemplateOutlet="gridLines" />
+            @for (lane of l.lanes; track $index; let li = $index) {
+              @for (item of lane; track item.roadmap.id) {
+                @let b = roadmapBar(item);
+                @let st = roadmapStatusOf(item.roadmap.status);
+                @if (b) {
+                  <button
+                    type="button"
+                    class="absolute z-10 flex h-5 items-center overflow-hidden text-left text-[10px] font-medium shadow-sm hover:ring-2 hover:ring-brand/40"
+                    [class]="(b.clipStart ? 'rounded-l-none' : 'rounded-l-md') + ' ' + (b.clipEnd ? 'rounded-r-none' : 'rounded-r-md')"
+                    [style.top.px]="6 + li * 26"
+                    [style.left.%]="b.left"
+                    [style.width.%]="b.width"
+                    [style.background]="'color-mix(in srgb, ' + st.color + ' 30%, white)'"
+                    [title]="item.roadmap.name + ' · ' + st.label + ' · ' + item.pct + '% done' + (overdue(item.roadmap) ? ' · past its due date' : '')"
+                    (click)="openProduct(l.product.id)"
+                  >
+                    <span class="absolute inset-y-0 left-0" [style.width.%]="item.pct" [style.background]="'color-mix(in srgb, ' + st.color + ' 70%, white)'"></span>
+                    <span class="relative truncate px-1.5 text-ink">{{ item.roadmap.name }} · {{ item.pct }}%</span>
+                    @if (overdue(item.roadmap)) {
+                      <span class="relative ml-auto mr-1 shrink-0 rounded bg-red-600 px-1 text-[9px] text-white">Late</span>
+                    }
+                  </button>
+                }
+              }
+            } @empty {
+              <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-ink/70">No dated roadmaps</span>
+            }
+          </div>
+        </div>
+      } @empty {
+        <p class="p-6 text-center text-[12px] text-ink/70">No products to show.</p>
+      }
+    </div>
+    <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-ink/70">
+      @for (s of ['planned', 'in_progress', 'on_hold', 'completed']; track s) {
+        @let st = roadmapStatusOf($any(s));
+        <span class="flex items-center gap-1.5"><span class="inline-block h-2.5 w-4 rounded-sm" [style.background]="'color-mix(in srgb, ' + st.color + ' 50%, white)'"></span>{{ st.label }}</span>
+      }
+      <span>Darker part = % of points done. Click a roadmap to open that product's Gantt.</span>
+    </div>
+  }
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

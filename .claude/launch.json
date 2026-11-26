@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "npro-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["ng", "serve", "--port", "4200"],
+      "port": 4200
+    },
+    {
+      "name": "npro-api",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "server/src/Npro.Api", "--launch-profile", "http"],
+      "port": 5144,
+      "autoPort": false
+    }
+  ]
+}

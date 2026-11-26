@@ -1,0 +1,117 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Integrations" sub="Productivity and attendance from external systems">
+    <a routerLink="/attendance" class="btn-secondary"><app-icon name="user-check" [size]="14" />Attendance &amp; Hours</a>
+    <button type="button" class="btn-primary" [disabled]="ext.loading()" (click)="syncNow()"><app-icon name="refresh" [size]="14" [class.animate-spin]="ext.loading()" />Sync now</button>
+  </app-page-header>
+
+  <div class="mb-3 rounded-xl border border-brand/20 bg-brand/[0.06] px-3 py-2 text-[12px] text-ink/70">
+    <strong class="text-ink">Phase A runs on sample data.</strong> nPro talks to both systems through an adapter, so the screens stay the same when the
+    live connection is switched on. API keys will be stored on the nPro backend (Step 18), never in the browser.
+  </div>
+
+  <div class="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+    @for (c of connectors; track c.kind) {
+      @let cf = conf(c.kind);
+      @let err = ext.errors()[c.kind];
+      <section class="glass rounded-xl p-3" [attr.aria-label]="c.name">
+        <div class="mb-2 flex items-start gap-2">
+          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 text-brand"><app-icon [name]="c.icon" [size]="16" /></div>
+          <div class="min-w-0 flex-1">
+            <h2 class="text-[13px] font-semibold">{{ c.name }}</h2>
+            <p class="text-[11px] text-ink/70">{{ c.blurb }}</p>
+          </div>
+          @if (err) {
+            <span class="pill shrink-0 py-0 text-[11px]" style="color: #b91c1c">Error</span>
+          } @else if (cf.lastSyncAt) {
+            <span class="pill shrink-0 py-0 text-[11px]" style="color: #166534">Connected</span>
+          }
+        </div>
+        <div class="mb-2 flex flex-wrap gap-1">
+          @for (p of c.provides; track p) {
+            <span class="tag text-[10px]">{{ p }}</span>
+          }
+        </div>
+
+        <span class="label">Source</span>
+        <div class="mb-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2" role="radiogroup" [attr.aria-label]="c.name + ' source'">
+          <button type="button" role="radio" class="rounded-lg border px-2.5 py-1.5 text-left text-[12px]" [class]="cf.mode === 'sample' ? 'border-brand bg-white' : 'border-ink/10 bg-white/50 hover:bg-white/80'" [attr.aria-checked]="cf.mode === 'sample'" (click)="setMode(c.kind, 'sample')">
+            <div class="font-medium">Sample data</div>
+            <div class="text-[11px] text-ink/70">Generated demo data, works offline</div>
+          </button>
+          <button type="button" role="radio" class="rounded-lg border px-2.5 py-1.5 text-left text-[12px]" [class]="cf.mode === 'api' ? 'border-brand bg-white' : 'border-ink/10 bg-white/50 hover:bg-white/80'" [attr.aria-checked]="cf.mode === 'api'" (click)="setMode(c.kind, 'api')">
+            <div class="font-medium">Company system</div>
+            <div class="text-[11px] text-ink/70">Through the nPro backend · Step 18</div>
+          </button>
+        </div>
+
+        @if (cf.mode === 'api') {
+          <label class="label" [for]="'ep-' + c.kind">API endpoint (used by the backend)</label>
+          <input [id]="'ep-' + c.kind" class="input mb-2 py-1 text-[12px]" [placeholder]="c.endpointHint" [value]="cf.endpoint" (change)="setEndpoint(c.kind, $any($event.target).value)" />
+          <p class="mb-2 text-[11px] text-ink/70">The API key is entered on the server when the backend is set up; nPro only stores the address here.</p>
+        }
+
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-ink/10 pt-2 text-[11px] text-ink/70">
+          @if (err) {
+            <span class="text-red-700" role="alert">{{ err }}</span>
+          } @else {
+            <span>Last sync: {{ cf.lastSyncAt ? (cf.lastSyncAt | date: 'MMM d, HH:mm') : 'never' }}</span>
+            <span>{{ counts()[c.kind] }} day records this week</span>
+          }
+        </div>
+      </section>
+    }
+  </div>
+
+  <div class="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_300px]">
+    <!-- People mapping -->
+    <section class="glass rounded-xl" aria-label="Employee ids">
+      <div class="flex flex-wrap items-center gap-2 border-b border-ink/10 px-3 py-2">
+        <div>
+          <h2 class="text-[13px] font-semibold">Employee ids</h2>
+          <p class="text-[11px] text-ink/70">People are matched by work email unless you enter the id the external systems use. {{ matched() }} of {{ ext.trackedUsers().length }} have data.</p>
+        </div>
+        <div class="relative ml-auto min-w-[140px] flex-1 sm:max-w-52">
+          <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+          <input class="input py-1 pl-8 text-[12px]" placeholder="Search people" aria-label="Search people" [value]="query()" (input)="query.set($any($event.target).value)" />
+        </div>
+      </div>
+      <ul class="divide-y divide-ink/[0.06]">
+        @for (u of people(); track u.id) {
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+            <div class="flex min-w-0 flex-1 basis-48 items-center gap-1.5">
+              <app-avatar [user]="u" size="sm" />
+              <div class="min-w-0">
+                <div class="truncate text-[12px] font-medium">{{ u.name }}</div>
+                <div class="truncate text-[10px] text-ink/70">{{ teamName(u) || (u.kind === 'vendor' ? 'Vendor' : '') }}</div>
+              </div>
+            </div>
+            <div class="w-full sm:w-60">
+              <input class="input py-1 font-mono text-[11px]" [attr.aria-label]="'Employee id for ' + u.name" [placeholder]="u.email" [value]="isCustom(u) ? ext.employeeId(u) : ''" (change)="setCode(u, $any($event.target).value)" />
+              @if (codeErrors()[u.id]) {
+                <p class="mt-0.5 text-[10px] text-red-700" role="alert">{{ codeErrors()[u.id] }}</p>
+              }
+            </div>
+            <span class="w-20 text-right text-[11px]" [class]="hasData(u) ? 'text-emerald-700' : 'text-amber-800'">{{ hasData(u) ? 'Matched' : 'No data' }}</span>
+          </li>
+        }
+      </ul>
+    </section>
+
+    <!-- Rules -->
+    <section class="glass h-fit rounded-xl p-3" aria-label="Attendance rules">
+      <h2 class="mb-2 text-[13px] font-semibold">Attendance rules</h2>
+      <label class="label" for="late-after">Late if punched in after</label>
+      <input id="late-after" type="time" class="input mb-2 py-1 text-[12px]" [value]="ext.config().lateAfter" (change)="setLate($any($event.target).value)" />
+      <label class="label" for="day-hours">Full working day (hours)</label>
+      <input id="day-hours" type="number" min="1" max="14" step="0.5" class="input mb-1 py-1 text-[12px]" [value]="ext.config().dayMinutes / 60" (change)="setDayHours($any($event.target).value)" />
+      <p class="mb-3 text-[11px] text-ink/70">Days shorter than this show their hours in amber.</p>
+      @if (conf('attendance').mode === 'sample') {
+        <button type="button" class="btn-secondary w-full justify-center text-[12px]" (click)="resetSample()"><app-icon name="refresh" [size]="13" />Reset sample leave &amp; corrections</button>
+      }
+    </section>
+  </div>
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

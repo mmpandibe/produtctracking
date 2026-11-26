@@ -1,0 +1,268 @@
+<app-modal [open]="open()" size="lg" [heading]="issue() ? 'Edit ' + issue()!.key : 'Create ticket'" (closed)="closed.emit()">
+  <div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+    <!-- ================= Left: ticket fields ================= -->
+    <form id="ticket-form" class="space-y-3" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label" for="tf-product">Product *</label>
+          <select id="tf-product" class="input" formControlName="productId">
+            @for (p of activeProducts(); track p.id) {
+              <option [value]="p.id">{{ p.name }} ({{ p.key }})</option>
+            }
+          </select>
+          @if (invalid('productId')) {
+            <p class="mt-1 text-[11px] text-red-700">Choose a product</p>
+          }
+        </div>
+        <div>
+          <label class="label" for="tf-parent">Parent ticket</label>
+          <select id="tf-parent" class="input" formControlName="parentId">
+            <option value="">No parent</option>
+            @for (p of parentOptions(); track p.id) {
+              <option [value]="p.id">{{ p.key }} · {{ p.summary }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <span class="label">Type</span>
+        <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Ticket type">
+          @for (t of types; track t.id) {
+            <button
+              type="button"
+              role="radio"
+              class="chip"
+              [class]="form.controls.type.value === t.id ? 'chip-on' : 'chip-off'"
+              [attr.aria-checked]="form.controls.type.value === t.id"
+              (click)="form.controls.type.setValue(t.id)"
+            >
+              <app-icon [name]="t.icon" [size]="12" [style.color]="(form.controls.type.value === t.id ? null : t.color) | readable" />{{ t.label }}
+            </button>
+          }
+        </div>
+      </div>
+
+      <div>
+        <label class="label" for="tf-summary">Summary *</label>
+        <input id="tf-summary" class="input" formControlName="summary" placeholder="What needs to be done?" autofocus />
+        @if (invalid('summary')) {
+          <p class="mt-1 text-[11px] text-red-700">A short summary is required (max 200 characters)</p>
+        }
+      </div>
+
+      <div>
+        <label class="label" for="tf-desc">Description</label>
+        <textarea id="tf-desc" class="input min-h-16" formControlName="description" placeholder="Steps, context, acceptance criteria…"></textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div>
+          <label class="label" for="tf-status">Status</label>
+          <select id="tf-status" class="input" formControlName="statusId">
+            @for (s of statuses(); track s.id) {
+              <option [value]="s.id">{{ s.name }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tf-priority">Priority</label>
+          <select id="tf-priority" class="input" formControlName="priority">
+            @for (p of priorities; track p.id) {
+              <option [value]="p.id">{{ p.label }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tf-assignee">Assignee</label>
+          <select id="tf-assignee" class="input" formControlName="assigneeId">
+            <option value="">Unassigned</option>
+            @for (u of assignees(); track u.id) {
+              <option [value]="u.id">{{ u.name }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tf-sprint">Sprint</label>
+          <select id="tf-sprint" class="input" formControlName="sprintId">
+            <option value="">Backlog (no sprint)</option>
+            @for (sp of sprintOptions(); track sp.id) {
+              <option [value]="sp.id">{{ sp.name }}{{ sprintLabel(sp.state) }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tf-client">Client</label>
+          <select id="tf-client" class="input" formControlName="clientId">
+            <option value="">No client</option>
+            @for (c of productClients(); track c.id) {
+              <option [value]="c.id">{{ c.name }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tf-level">Support level</label>
+          <select id="tf-level" class="input" formControlName="supportLevel">
+            <option value="">Not a support ticket</option>
+            <option value="l1">L1 · {{ store.supportLevel('l1')?.name }}</option>
+            <option value="l2">L2 · {{ store.supportLevel('l2')?.name }}</option>
+            <option value="l3">L3 · {{ store.supportLevel('l3')?.name }}</option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="tf-points">Story points</label>
+          <input id="tf-points" class="input" type="number" min="0" step="1" formControlName="storyPoints" placeholder="e.g. 3" />
+        </div>
+        <div>
+          <label class="label" for="tf-start">Start date</label>
+          <input id="tf-start" class="input" type="date" formControlName="startDate" />
+        </div>
+        <div>
+          <label class="label" for="tf-due">Due date</label>
+          <input id="tf-due" class="input" type="date" formControlName="dueDate" />
+        </div>
+        <div>
+          <label class="label" for="tf-estimate">Estimate (hours)</label>
+          <input id="tf-estimate" class="input" type="number" min="0" step="0.5" formControlName="estimateHours" placeholder="e.g. 4" />
+        </div>
+        <div>
+          <label class="label" for="tf-round">Round</label>
+          <input id="tf-round" class="input" type="number" min="1" step="1" formControlName="round" placeholder="e.g. 1" />
+          @if (invalid('round')) {
+            <p class="mt-1 text-[11px] text-red-700">Round starts at 1</p>
+          }
+        </div>
+      </div>
+      @if (submitted() && form.hasError('dueBeforeStart')) {
+        <p class="-mt-1 text-[11px] text-red-700">The due date can't be before the start date.</p>
+      }
+
+      @if (issue(); as i) {
+        <div>
+          <div class="flex items-center justify-between">
+            <label class="label" for="tf-progress">Percentage of completion</label>
+            <span class="text-[12px] font-semibold tabular-nums text-brand">{{ progress() }}%</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <!-- Not a second formControlName: two inputs on one control do not update each other -->
+            <input
+              id="tf-progress"
+              class="h-1.5 flex-1 cursor-pointer accent-brand"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              [value]="progress()"
+              (input)="form.controls.progress.setValue(+$any($event.target).value)"
+            />
+            <input class="input w-16 py-1 text-center text-[12px]" type="number" min="0" max="100" formControlName="progress" aria-label="Percentage of completion" />
+          </div>
+          <p class="mt-1 text-[11px] text-ink/70">
+            Work started {{ i.startAt ? (i.startAt | date: 'MMM d, HH:mm') : '—' }} · finished {{ i.endAt ? (i.endAt | date: 'MMM d, HH:mm') : '—' }}
+            <span class="text-ink/70">(set automatically by status and timer)</span>
+          </p>
+        </div>
+      }
+
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label class="label" for="tf-est-benefits">Estimated benefits</label>
+          <textarea id="tf-est-benefits" class="input min-h-14" formControlName="estimatedBenefits" placeholder="Expected value, e.g. fewer support calls, +5% conversion"></textarea>
+        </div>
+        <div>
+          <label class="label" for="tf-ach-benefits">Achieved benefits</label>
+          <textarea id="tf-ach-benefits" class="input min-h-14" formControlName="achievedBenefits" placeholder="What was actually achieved after delivery"></textarea>
+        </div>
+      </div>
+
+      <div>
+        <label class="label" for="tf-labels">Labels</label>
+        <input id="tf-labels" class="input" formControlName="labels" placeholder="Comma separated, e.g. frontend, urgent" />
+      </div>
+
+      @if (fields().length) {
+        <fieldset class="rounded-xl border border-ink/10 bg-white/35 p-2.5">
+          <legend class="section-title px-1">Custom fields</legend>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            @for (f of fields(); track f.id) {
+              <div>
+                @if (f.type === 'checkbox') {
+                  <label class="flex cursor-pointer items-center gap-2 pt-5 text-[12px]">
+                    <input type="checkbox" class="accent-brand" [checked]="cfValues()[f.id] === true" (change)="setCf(f.id, $any($event.target).checked)" />
+                    {{ f.name }}{{ f.required ? ' *' : '' }}
+                  </label>
+                } @else {
+                  <label class="label" [for]="'tf-cf-' + f.id">{{ f.name }}{{ f.required ? ' *' : '' }}</label>
+                  @switch (f.type) {
+                    @case ('select') {
+                      <select class="input" [id]="'tf-cf-' + f.id" (change)="setCf(f.id, $any($event.target).value)">
+                        <option value="" [selected]="!cfText(f.id)">—</option>
+                        @for (o of f.options ?? []; track o) {
+                          <option [value]="o" [selected]="o === cfText(f.id)">{{ o }}</option>
+                        }
+                        @if (cfText(f.id) && !(f.options ?? []).includes(cfText(f.id))) {
+                          <option [value]="cfText(f.id)" selected>{{ cfText(f.id) }} (removed option)</option>
+                        }
+                      </select>
+                    }
+                    @case ('number') {
+                      <input class="input" type="number" step="any" [id]="'tf-cf-' + f.id" [value]="cfText(f.id)" (input)="setCf(f.id, $any($event.target).value)" />
+                    }
+                    @case ('date') {
+                      <input class="input" type="date" [id]="'tf-cf-' + f.id" [value]="cfText(f.id)" (input)="setCf(f.id, $any($event.target).value)" />
+                    }
+                    @default {
+                      <input class="input" [id]="'tf-cf-' + f.id" [value]="cfText(f.id)" (input)="setCf(f.id, $any($event.target).value)" />
+                    }
+                  }
+                }
+                @if (submitted() && cfErrors()[f.id]) {
+                  <p class="mt-1 text-[11px] text-red-700">{{ cfErrors()[f.id] }}</p>
+                }
+              </div>
+            }
+          </div>
+        </fieldset>
+      }
+    </form>
+
+    <!-- ================= Right: log hours / files / comments ================= -->
+    <aside class="lg:border-l lg:border-ink/10 lg:pl-5" aria-label="Ticket activity">
+      @if (issue(); as i) {
+        <div class="mb-3 flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+          <button type="button" role="tab" class="flex flex-1 items-center justify-center gap-1 rounded-md py-1.5" [class]="tab() === 'time' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70 hover:text-ink'" [attr.aria-selected]="tab() === 'time'" (click)="tab.set('time')">
+            <app-icon name="timer" [size]="13" /> Log hours <span class="text-ink/70">{{ counts().time }}</span>
+          </button>
+          <button type="button" role="tab" class="flex flex-1 items-center justify-center gap-1 rounded-md py-1.5" [class]="tab() === 'files' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70 hover:text-ink'" [attr.aria-selected]="tab() === 'files'" (click)="tab.set('files')">
+            <app-icon name="paperclip" [size]="13" /> Files <span class="text-ink/70">{{ counts().files }}</span>
+          </button>
+          <button type="button" role="tab" class="flex flex-1 items-center justify-center gap-1 rounded-md py-1.5" [class]="tab() === 'comments' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70 hover:text-ink'" [attr.aria-selected]="tab() === 'comments'" (click)="tab.set('comments')">
+            <app-icon name="message" [size]="13" /> Comments <span class="text-ink/70">{{ counts().comments }}</span>
+          </button>
+        </div>
+        @switch (tab()) {
+          @case ('time') {
+            <app-time-log-panel [issueId]="i.id" />
+          }
+          @case ('files') {
+            <app-attachments-panel [issueId]="i.id" />
+          }
+          @case ('comments') {
+            <app-comments-panel [issueId]="i.id" />
+          }
+        }
+      } @else {
+        <h3 class="section-title mb-2 flex items-center gap-1.5"><app-icon name="paperclip" [size]="13" /> Attachments</h3>
+        <app-attachments-panel [(pending)]="pendingFiles" />
+        <p class="mt-3 text-[11px] text-ink/70">Log hours and comments are available once the ticket is created.</p>
+      }
+    </aside>
+  </div>
+
+  <div footer class="contents">
+    <button type="button" class="btn-secondary" (click)="closed.emit()">Cancel</button>
+    <button type="submit" form="ticket-form" class="btn-primary" [disabled]="saving()">
+      {{ saving() ? 'Saving…' : issue() ? 'Save changes' : 'Create ticket' }}
+    </button>
+  </div>
+</app-modal>

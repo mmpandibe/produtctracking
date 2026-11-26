@@ -1,0 +1,328 @@
+<div class="mx-auto max-w-[1100px]">
+  <div class="print:hidden">
+    <app-page-header heading="CXO Summary">
+      <button type="button" class="btn-secondary" (click)="copyText()"><app-icon [name]="copied() ? 'check' : 'file-text'" [size]="14" /> {{ copied() ? 'Copied' : 'Copy summary' }}</button>
+      <button type="button" class="btn-secondary" (click)="exportCsv()"><app-icon name="download" [size]="14" /> Export CSV</button>
+      <button type="button" class="btn-primary" (click)="print()"><app-icon name="file-text" [size]="14" /> Print / Save PDF</button>
+    </app-page-header>
+
+    <!-- Period controls -->
+    <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+      <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="radiogroup" aria-label="Summary period">
+        <button type="button" role="radio" class="rounded-md px-3 py-1" [class]="kind() === 'week' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-checked]="kind() === 'week'" (click)="setKind('week')">Weekly</button>
+        <button type="button" role="radio" class="rounded-md px-3 py-1" [class]="kind() === 'month' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-checked]="kind() === 'month'" (click)="setKind('month')">Monthly</button>
+      </div>
+      <div class="flex items-center gap-1">
+        <button type="button" class="icon-btn h-8 w-8" [attr.aria-label]="kind() === 'week' ? 'Previous week' : 'Previous month'" (click)="shift(-1)"><app-icon name="chevron-left" [size]="16" /></button>
+        <button type="button" class="icon-btn h-8 w-8" [attr.aria-label]="kind() === 'week' ? 'Next week' : 'Next month'" (click)="shift(1)" [disabled]="isCurrent()"><app-icon name="chevron-right" [size]="16" /></button>
+        @if (!isCurrent()) {
+          <button type="button" class="text-[12px] text-brand hover:underline" (click)="toCurrent()">{{ kind() === 'week' ? 'This week' : 'This month' }}</button>
+        }
+      </div>
+      <select class="input w-auto" aria-label="Product" (change)="productFilter.set($any($event.target).value)">
+        <option value="">All products</option>
+        @for (p of store.products(); track p.id) {
+          <option [value]="p.id" [selected]="p.id === productFilter()">{{ p.name }}</option>
+        }
+      </select>
+      <span class="ml-auto text-[11px] text-ink/70">Print / Save PDF prints just the report below.</span>
+    </div>
+  </div>
+
+  <!-- ===================== The report (what gets printed) ===================== -->
+  <article class="report glass rounded-2xl p-5 print:rounded-none print:p-0" aria-labelledby="report-title">
+    <header class="mb-4 flex flex-wrap items-start gap-3 border-b border-ink/10 pb-3">
+      <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-[12px] font-bold text-white">nP</div>
+      <div class="min-w-0 flex-1">
+        <h1 id="report-title" class="text-[18px] font-semibold tracking-tight">{{ title() }}</h1>
+        <p class="text-[12px] text-ink/70">{{ scopeLabel() }} · prepared {{ generatedAt | date: 'MMM d, y, HH:mm' }}{{ isCurrent() ? ' · period in progress' : '' }}</p>
+      </div>
+    </header>
+
+    <!-- Section 1: Roadmaps -->
+    <section class="mb-5 break-inside-avoid" aria-labelledby="sec1-h">
+      <h2 id="sec1-h" class="section-title mb-1.5 flex items-center gap-1.5"><app-icon name="milestone" [size]="12" /> Section 1 · Roadmap summary</h2>
+      <table class="w-full table-fixed text-[12px]">
+        <thead class="text-left text-[11px] text-ink/70">
+          <tr class="border-b border-ink/10">
+            <th class="w-20 py-1.5 pr-2 font-medium sm:w-28">Product</th>
+            <th class="py-1.5 pr-2 font-medium">Roadmap</th>
+            <th class="hidden w-20 py-1.5 pr-2 font-medium md:table-cell">Created</th>
+            <th class="hidden w-20 py-1.5 pr-2 font-medium sm:table-cell">Start</th>
+            <th class="hidden w-20 py-1.5 pr-2 font-medium sm:table-cell">Due</th>
+            <th class="w-20 py-1.5 pr-2 font-medium sm:w-24">Status</th>
+            <th class="w-14 py-1.5 pr-2 font-medium sm:w-24">% done</th>
+            <th class="hidden w-24 py-1.5 pr-2 font-medium md:table-cell">Completed</th>
+            <th class="hidden py-1.5 font-medium lg:table-cell">Achieved benefits</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (r of roadmapRows(); track r.roadmap.id) {
+            @let st = roadmapStatusOf(r.roadmap.status);
+            <tr class="border-b border-ink/[0.06] align-top last:border-0">
+              <td class="py-1.5 pr-2"><span class="flex min-w-0 items-center gap-1.5"><span class="h-2 w-2 shrink-0 rounded-full" [style.background]="r.product?.color"></span><span class="truncate">{{ r.product?.name }}</span></span></td>
+              <td class="py-1.5 pr-2 font-medium">{{ r.roadmap.name }}<span class="block text-[10.5px] font-normal text-ink/70">{{ r.progress.sprints }} sprint{{ r.progress.sprints === 1 ? '' : 's' }}</span></td>
+              <td class="hidden py-1.5 pr-2 tabular-nums md:table-cell">{{ r.roadmap.createdAt | date: 'MMM d, y' }}</td>
+              <td class="hidden py-1.5 pr-2 tabular-nums sm:table-cell">{{ r.roadmap.startDate ? (r.roadmap.startDate | date: 'MMM d, y') : '—' }}</td>
+              <td class="hidden py-1.5 pr-2 tabular-nums sm:table-cell" [class.font-semibold]="r.overdue" [class.text-red-700]="r.overdue">{{ r.roadmap.dueDate ? (r.roadmap.dueDate | date: 'MMM d, y') : '—' }}</td>
+              <td class="py-1.5 pr-2"><span class="pill py-0 text-[10.5px]" [style.color]="(st.color) | readable">{{ st.label }}</span></td>
+              <td class="py-1.5 pr-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-ink/10 sm:block"><span class="block h-full rounded-full bg-pastel-green" [style.width.%]="r.progress.pct"></span></span>
+                  <span class="w-8 text-right font-semibold tabular-nums">{{ r.progress.pct }}%</span>
+                </div>
+              </td>
+              <td class="hidden py-1.5 pr-2 tabular-nums md:table-cell">{{ r.roadmap.completedAt ? (r.roadmap.completedAt | date: 'MMM d, y') : '—' }}</td>
+              <td class="hidden py-1.5 text-ink/75 lg:table-cell">{{ r.roadmap.achievedBenefits || '—' }}</td>
+            </tr>
+          } @empty {
+            <tr><td colspan="9" class="py-3 text-center text-ink/70">No roadmaps yet. Create them on the Backlog &amp; Sprints page.</td></tr>
+          }
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Section 2: Hours by client and product -->
+    <section class="mb-5 break-inside-avoid" aria-labelledby="sec2-h">
+      @let hg = hoursGrid();
+      <h2 id="sec2-h" class="section-title mb-1.5 flex items-center gap-1.5"><app-icon name="timer" [size]="12" /> Section 2 · Hours by client and product</h2>
+      @if (hg.grand === 0) {
+        <p class="rounded-lg border border-dashed border-ink/15 py-3 text-center text-[12px] text-ink/70">No hours logged in this period.</p>
+      } @else {
+        <table class="w-full table-fixed text-[12px]">
+          <thead class="text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="w-32 py-1.5 pr-2 text-left font-medium">Client</th>
+              @for (p of hg.products; track p.id) {
+                <th class="truncate px-1 py-1.5 text-right font-medium" [title]="p.name">{{ p.name }}</th>
+              }
+              <th class="w-24 py-1.5 pl-2 text-right font-medium">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of hg.rows; track c.id) {
+              <tr class="border-b border-ink/[0.06]">
+                <td class="truncate py-1.5 pr-2 font-medium" [class.italic]="c.id === '__none__'">{{ c.name }}</td>
+                @for (p of hg.products; track p.id) {
+                  <td class="px-1 py-1.5 text-right tabular-nums" [class.text-ink/70]="!hg.cell(c.id, p.id)">{{ hg.cell(c.id, p.id) ? fmt(hg.cell(c.id, p.id)) : '·' }}</td>
+                }
+                <td class="py-1.5 pl-2 text-right tabular-nums"><span class="font-semibold">{{ fmt(hg.rowTotal(c.id)) }}</span><span class="ml-1 text-[10.5px] text-ink/70">{{ pct(hg.rowTotal(c.id), hg.grand) }}%</span></td>
+              </tr>
+            }
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-ink/15 font-semibold">
+              <td class="py-1.5 pr-2 text-[11px] uppercase tracking-wide text-ink/70">Total</td>
+              @for (p of hg.products; track p.id) {
+                <td class="px-1 py-1.5 text-right tabular-nums">{{ hg.colTotal(p.id) ? fmt(hg.colTotal(p.id)) : '—' }}<span class="ml-1 text-[10.5px] font-normal text-ink/70">{{ hg.colTotal(p.id) ? pct(hg.colTotal(p.id), hg.grand) + '%' : '' }}</span></td>
+              }
+              <td class="py-1.5 pl-2 text-right tabular-nums">{{ fmt(hg.grand) }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      }
+    </section>
+
+    <!-- Headline numbers -->
+    <section class="mb-5 break-inside-avoid" aria-label="Headline numbers">
+      <div class="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        @for (k of kpis(); track k.label) {
+          @let good = k.delta === undefined || k.delta === 0 ? null : (k.delta > 0) === k.upIsGood;
+          <div class="rounded-xl border border-ink/10 bg-white/70 p-3">
+            <div class="text-[10.5px] font-medium uppercase tracking-wide text-ink/70">{{ k.label }}</div>
+            <div class="mt-1 text-[20px] font-semibold tabular-nums leading-tight">{{ k.now }}</div>
+            <div class="mt-0.5 text-[11px]" [class.text-pastel-green]="good === true" [class.text-red-700]="good === false" [class.text-ink/70]="good === null">
+              @if (k.delta === undefined) {
+                new · prev {{ k.prev }}
+              } @else if (k.delta === 0) {
+                no change
+              } @else {
+                {{ k.delta > 0 ? '▲' : '▼' }} {{ k.delta > 0 ? k.delta : -k.delta }}% <span class="text-ink/70">vs {{ k.prev }}</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    </section>
+
+    <!-- Highlights + comments -->
+    <section class="mb-5 grid grid-cols-1 gap-4 break-inside-avoid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div>
+        <h2 class="section-title mb-2">Highlights</h2>
+        <ul class="space-y-1.5">
+          @for (h of highlights(); track $index) {
+            <li class="flex gap-2 text-[13px] leading-snug">
+              <span role="img" class="mt-1.5 h-2 w-2 shrink-0 rounded-full" [class]="h.tone === 'good' ? 'bg-pastel-green' : h.tone === 'warn' ? 'bg-pastel-coral' : 'bg-pastel-blue'" [attr.aria-label]="h.tone === 'good' ? 'Positive' : h.tone === 'warn' ? 'Needs attention' : 'Info'"></span>
+              <span>{{ h.text }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+      <div>
+        <label class="section-title mb-2 block" for="cxo-note">Comments for leadership</label>
+        <textarea
+          id="cxo-note"
+          class="input min-h-28 text-[13px] print:hidden"
+          placeholder="Add context, decisions needed, risks… (saved for this {{ kind() }})"
+          [value]="note()"
+          (input)="setNote($any($event.target).value)"
+        ></textarea>
+        <p class="hidden whitespace-pre-wrap text-[13px] print:block">{{ note() || 'No comments.' }}</p>
+        <p class="mt-1 text-[11px] text-ink/70 print:hidden">Saved automatically and included in print, CSV and copy.</p>
+      </div>
+    </section>
+
+    <!-- Products + clients -->
+    <section class="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div class="break-inside-avoid">
+        <h2 class="section-title mb-1.5">By product</h2>
+        <table class="w-full table-fixed text-[12px]">
+          <thead class="text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="py-1.5 pr-2 font-medium">Product</th>
+              <th class="w-14 py-1.5 pr-2 text-right font-medium">Resolved</th>
+              <th class="w-12 py-1.5 pr-2 text-right font-medium">Open</th>
+              <th class="w-14 py-1.5 pr-2 text-right font-medium">Overdue</th>
+              <th class="w-24 py-1.5 text-right font-medium">Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of productRows(); track r.product.id) {
+              <tr class="border-b border-ink/[0.06] last:border-0">
+                <td class="py-1.5 pr-2"><span class="flex min-w-0 items-center gap-1.5"><span class="h-2 w-2 shrink-0 rounded-full" [style.background]="r.product.color"></span><span class="truncate font-medium">{{ r.product.name }}</span></span></td>
+                <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.resolved }}</td>
+                <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.open }}</td>
+                <td class="py-1.5 pr-2 text-right tabular-nums" [class.font-semibold]="r.overdue" [class.text-red-700]="r.overdue">{{ r.overdue }}</td>
+                <td class="py-1.5 text-right tabular-nums">{{ r.minutes ? fmt(r.minutes) : '—' }}<span class="ml-1 text-[10.5px] text-ink/70">{{ r.minutes ? r.share + '%' : '' }}</span></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div class="break-inside-avoid">
+        <h2 class="section-title mb-1.5">By client</h2>
+        <table class="w-full table-fixed text-[12px]">
+          <thead class="text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="py-1.5 pr-2 font-medium">Client</th>
+              <th class="w-14 py-1.5 pr-2 text-right font-medium">Resolved</th>
+              <th class="w-12 py-1.5 pr-2 text-right font-medium">Open</th>
+              <th class="w-16 py-1.5 pr-2 text-right font-medium" title="Open high / highest priority">High pri.</th>
+              <th class="w-24 py-1.5 text-right font-medium">Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of clientRows(); track r.client.id) {
+              <tr class="border-b border-ink/[0.06] last:border-0">
+                <td class="py-1.5 pr-2"><span class="flex min-w-0 items-center gap-1.5"><span class="truncate font-medium">{{ r.client.name }}</span></span></td>
+                <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.resolved }}</td>
+                <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.open }}</td>
+                <td class="py-1.5 pr-2 text-right tabular-nums" [class.font-semibold]="r.highOpen" [class.text-pastel-coral]="r.highOpen">{{ r.highOpen }}</td>
+                <td class="py-1.5 text-right tabular-nums">{{ r.minutes ? fmt(r.minutes) : '—' }}<span class="ml-1 text-[10.5px] text-ink/70">{{ r.minutes ? r.share + '%' : '' }}</span></td>
+              </tr>
+            } @empty {
+              <tr><td colspan="5" class="py-3 text-center text-ink/70">No client activity in this period.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Sprints -->
+    @if (sprintRows().length) {
+      <section class="mb-5 break-inside-avoid">
+        <h2 class="section-title mb-1.5">Active sprints</h2>
+        <div class="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+          @for (s of sprintRows(); track s.sprint.id) {
+            <div class="rounded-xl border border-ink/10 bg-white/70 p-3">
+              <div class="flex items-center gap-2">
+                <span class="text-[13px] font-semibold">{{ s.sprint.name }}</span>
+                <span class="pill py-0 text-[10.5px]" [class.text-pastel-green]="s.onTrack" [class.text-red-700]="!s.onTrack">{{ s.onTrack ? 'On track' : 'Behind plan' }}</span>
+                <span class="ml-auto text-[11px] text-ink/70">{{ s.daysLeft >= 0 ? s.daysLeft + ' days left' : -s.daysLeft + ' days over' }}</span>
+              </div>
+              @if (s.sprint.goal) {
+                <p class="mt-0.5 text-[12px] text-ink/70">{{ s.sprint.goal }}</p>
+              }
+              <div class="mt-2 space-y-1 text-[11px] text-ink/70">
+                <div class="flex items-center gap-2">
+                  <span class="w-20">Points done</span>
+                  <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/10"><span class="block h-full rounded-full bg-pastel-green" [style.width.%]="s.done"></span></span>
+                  <span class="w-24 text-right tabular-nums">{{ s.done }}% · {{ s.stats.donePoints }}/{{ s.stats.points }} pts</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="w-20">Time elapsed</span>
+                  <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/10"><span class="block h-full rounded-full bg-ink/30" [style.width.%]="s.elapsed"></span></span>
+                  <span class="w-24 text-right tabular-nums">{{ s.elapsed }}%</span>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Attention -->
+    <section class="mb-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div class="break-inside-avoid">
+        <h2 class="section-title mb-1.5">Overdue ({{ overdueList().length }})</h2>
+        <ul class="space-y-1 text-[12px]">
+          @for (i of overdueList(); track i.id) {
+            <li class="flex gap-2"><a class="inline-flex min-h-[24px] items-center font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', i.key]">{{ i.key }}</a><span class="min-w-0 flex-1 truncate">{{ i.summary }}</span><span class="shrink-0 text-red-700">{{ i.dueDate | date: 'MMM d' }}</span></li>
+          } @empty {
+            <li class="text-ink/70">Nothing overdue.</li>
+          }
+        </ul>
+      </div>
+      <div class="break-inside-avoid">
+        <h2 class="section-title mb-1.5">High priority open ({{ highPriorityList().length }})</h2>
+        <ul class="space-y-1 text-[12px]">
+          @for (i of highPriorityList(); track i.id) {
+            <li class="flex gap-2"><a class="inline-flex min-h-[24px] items-center font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', i.key]">{{ i.key }}</a><span class="min-w-0 flex-1 truncate">{{ i.summary }}</span><span class="shrink-0 text-ink/70">{{ clientName(i) }}</span></li>
+          } @empty {
+            <li class="text-ink/70">No open high-priority tickets.</li>
+          }
+        </ul>
+      </div>
+      <div class="break-inside-avoid">
+        <h2 class="section-title mb-1.5">On hold ({{ holdList().length }})</h2>
+        <ul class="space-y-1 text-[12px]">
+          @for (i of holdList(); track i.id) {
+            <li class="flex gap-2"><a class="inline-flex min-h-[24px] items-center font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', i.key]">{{ i.key }}</a><span class="min-w-0 flex-1 truncate">{{ i.summary }}</span></li>
+          } @empty {
+            <li class="text-ink/70">Nothing on hold.</li>
+          }
+        </ul>
+      </div>
+    </section>
+
+    <!-- Team effort -->
+    <section class="grid grid-cols-1 gap-4 break-inside-avoid lg:grid-cols-2">
+      <div>
+        <h2 class="section-title mb-1.5">Team effort</h2>
+        <table class="w-full text-[12px]">
+          <thead class="text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10"><th class="py-1.5 font-medium">Person</th><th class="py-1.5 text-right font-medium">Hours</th><th class="py-1.5 text-right font-medium">Share</th><th class="py-1.5 text-right font-medium">Resolved</th></tr>
+          </thead>
+          <tbody>
+            @for (r of people(); track r.user.id) {
+              <tr class="border-b border-ink/[0.06] last:border-0" [class.text-ink/70]="!r.minutes && !r.resolved">
+                <td class="py-1.5">{{ r.user.name }}</td>
+                <td class="py-1.5 text-right tabular-nums">{{ r.minutes ? fmt(r.minutes) : '—' }}</td>
+                <td class="py-1.5 text-right tabular-nums">{{ r.minutes ? r.share + '%' : '—' }}</td>
+                <td class="py-1.5 text-right tabular-nums">{{ r.resolved }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h2 class="section-title mb-1.5">Hours by activity</h2>
+        @if (activityChart().categories.length) {
+          <app-bar-chart [categories]="activityChart().categories" [series]="activityChart().series" [horizontal]="true" suffix="h" [decimals]="1" ariaLabel="Hours by activity" />
+        } @else {
+          <p class="text-[12px] text-ink/70">No hours logged in this period.</p>
+        }
+      </div>
+    </section>
+  </article>
+</div>

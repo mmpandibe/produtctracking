@@ -1,0 +1,152 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Clients">
+    <button type="button" class="btn-primary" (click)="openCreate()"><app-icon name="plus" [size]="15" /> Add client</button>
+  </app-page-header>
+
+    <!-- Filters -->
+    <div class="glass mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+      <span class="pill text-[12px] text-ink/70">{{ activeCount() }} active</span>
+      <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70">
+        <input type="checkbox" class="accent-brand" [checked]="showArchived()" (change)="showArchived.set($any($event.target).checked)" />
+        Show archived
+      </label>
+      <a routerLink="/support" [queryParams]="{ tab: 'settings' }" class="px-1 text-[12px] text-brand hover:underline">SLA targets are set per support level on the Support Desk</a>
+      <div class="relative ml-auto min-w-[150px] flex-1 sm:max-w-64">
+        <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+        <input class="input pl-8" placeholder="Search clients" aria-label="Search clients by name, contact or email" [value]="query()" (input)="query.set(value($event))" />
+      </div>
+    </div>
+
+    @if (visible().length === 0) {
+      <div class="glass rounded-xl p-8 text-center">
+        <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="building" [size]="18" /></div>
+        <p class="text-[13px] font-medium">{{ store.clients().length ? 'No clients match these filters' : 'No clients yet' }}</p>
+        <p class="mb-3 text-[12px] text-ink/70">Clients can be linked to products and tickets, and get their own users.</p>
+        <button type="button" class="btn-primary" (click)="openCreate()"><app-icon name="plus" [size]="15" /> Add client</button>
+      </div>
+    } @else {
+      <div class="glass overflow-hidden rounded-xl">
+        <table class="w-full table-fixed text-[12px]">
+          <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="py-2 pl-3 pr-2 font-medium">Client</th>
+              <th class="w-28 py-2 pr-2 font-medium">Support</th>
+              <th class="hidden w-56 py-2 pr-2 font-medium lg:table-cell">Products</th>
+              <th class="w-24 py-2 pr-2 font-medium">Tickets</th>
+              <th class="hidden w-60 py-2 pr-2 font-medium md:table-cell">Contact</th>
+              <th class="w-9 py-2"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (c of visible(); track c.id) {
+              @let n = countsOf(c);
+              <tr class="border-b border-ink/[0.06] last:border-0 hover:bg-white/50" [class.muted-row]="c.archived">
+                <td class="py-2 pl-3 pr-2">
+                  <div class="flex min-w-0 items-center gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-[11px] font-semibold text-brand">
+                      {{ c.name.slice(0, 2).toUpperCase() }}
+                    </span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <span class="truncate text-[13px] font-semibold">{{ c.name }}</span>
+                        @if (c.archived) {
+                          <span class="tag py-0 text-[10px]">Archived</span>
+                        }
+                        @if (c.notes) {
+                          <span class="shrink-0 text-ink/70" [title]="c.notes"><app-icon name="file-text" [size]="12" /></span>
+                        }
+                      </div>
+                      @let cu = store.clientUsers(c.id).length;
+                      <div class="truncate text-[11px] text-ink/70">{{ c.contactName ?? 'No contact person' }}@if (cu) {<a class="ml-1 hover:text-brand" routerLink="/organisation" [queryParams]="{ tab: 'people' }">· {{ cu }} user{{ cu === 1 ? '' : 's' }}</a>}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-2 pr-2">
+                  @if (n.support) {
+                    <a class="hover:text-brand" routerLink="/support" [title]="'Open support tickets for ' + c.name">
+                      <strong class="tabular-nums">{{ n.support }}</strong><span class="ml-1 text-ink/70">open</span>
+                      @if (n.breached) {
+                        <span class="ml-1 font-medium text-red-700">· {{ n.breached }} breached</span>
+                      }
+                    </a>
+                  } @else {
+                    <span class="text-ink/70">—</span>
+                  }
+                </td>
+                <td class="hidden py-2 pr-2 lg:table-cell">
+                  <div class="flex flex-wrap gap-1">
+                    @for (p of productsOf(c); track p.id) {
+                      <span class="tag"><span class="h-1.5 w-1.5 rounded-full" [style.background]="p.color"></span>{{ p.name }}</span>
+                    } @empty {
+                      <span class="text-ink/70">—</span>
+                    }
+                  </div>
+                </td>
+                <td class="py-2 pr-2">
+                  @if (n.total) {
+                    <a class="hover:text-brand" routerLink="/tickets" [queryParams]="{ client: c.id }" [title]="'View ' + c.name + ' tickets'">
+                      <strong class="tabular-nums">{{ n.open }}</strong><span class="ml-1 text-ink/70">open / {{ n.total }}</span>
+                    </a>
+                  } @else {
+                    <span class="text-ink/70">—</span>
+                  }
+                </td>
+                <td class="hidden py-2 pr-2 md:table-cell">
+                  @if (c.contactEmail) {
+                    <a class="block min-h-[24px] truncate leading-[24px] text-brand hover:underline" [href]="'mailto:' + c.contactEmail">{{ c.contactEmail }}</a>
+                  }
+                  @if (c.contactPhone) {
+                    <a class="block min-h-[24px] truncate leading-[24px] text-ink/70 hover:text-brand" [href]="'tel:' + c.contactPhone">{{ c.contactPhone }}</a>
+                  }
+                  @if (!c.contactEmail && !c.contactPhone) {
+                    <span class="text-ink/70">—</span>
+                  }
+                </td>
+                <td class="py-2 pr-2 text-right">
+                  <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Actions for ' + c.name" (click)="toggleMenu(c.id, $event)">
+                    <app-icon name="ellipsis" [size]="15" />
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+  <!-- Row menu -->
+  @if (menuClient(); as c) {
+    <div class="fixed inset-0 z-30" (click)="menuFor.set(null)"></div>
+    <div class="glass-strong fixed z-40 w-40 rounded-xl p-1" [style.top.px]="menuPos().top" [style.left.px]="menuPos().left" role="menu">
+      <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="openEdit(c)">
+        <app-icon name="pencil" [size]="13" /> Edit
+      </button>
+      <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="toggleArchive(c)">
+        <app-icon [name]="c.archived ? 'archive-restore' : 'archive'" [size]="13" /> {{ c.archived ? 'Restore' : 'Archive' }}
+      </button>
+      <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] text-red-700 hover:bg-red-50" (click)="askDelete(c)">
+        <app-icon name="trash" [size]="13" /> Delete
+      </button>
+    </div>
+  }
+
+  <app-client-form [open]="formOpen()" [client]="editing()" (closed)="formOpen.set(false)" (saved)="showToast($event)" />
+
+  <app-modal [open]="!!deleting()" heading="Delete client?" (closed)="deleting.set(undefined)">
+    @if (deleting(); as c) {
+      <p class="text-[13px] text-ink/70">
+        <strong class="text-ink">{{ c.name }}</strong> will be deleted. {{ countsOf(c).total }} ticket(s) will keep existing without a client, and the client is
+        removed from {{ productsOf(c).length }} product(s). Its {{ store.clientUsers(c.id).length }} user(s) are deactivated. This cannot be undone — use <em>Archive</em> to hide the client instead.
+      </p>
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deleting.set(undefined)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="confirmDelete()">Delete client</button>
+    </div>
+  </app-modal>
+
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

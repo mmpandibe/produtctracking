@@ -1,0 +1,251 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Support Desk" />
+
+  <!-- Tabs -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2">
+    <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'queues' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'queues'" (click)="tab.set('queues')">Queues ({{ kpis().open }})</button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'report' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'report'" (click)="tab.set('report')">SLA report</button>
+      @if (canSetup()) {
+        <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'settings' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'settings'" (click)="tab.set('settings')">Levels &amp; targets</button>
+      }
+    </div>
+    <span class="text-[11px] text-ink/70">Clocks run in calendar time from when a ticket was raised.</span>
+  </div>
+
+  @switch (tab()) {
+    <!-- ================= Queues ================= -->
+    @case ('queues') {
+      <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Open support tickets</div><div class="text-[20px] font-semibold tabular-nums">{{ kpis().open }}</div></div>
+        <button type="button" class="glass rounded-xl px-3 py-2 text-left hover:bg-white/70" (click)="attention.set(true)">
+          <div class="text-[11px] text-ink/70">Breached</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(kpis().breached ? clockColors.breached : null) | readable">{{ kpis().breached }}</div>
+        </button>
+        <button type="button" class="glass rounded-xl px-3 py-2 text-left hover:bg-white/70" (click)="attention.set(true)">
+          <div class="text-[11px] text-ink/70">At risk</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(kpis().atRisk ? clockColors.at_risk : null) | readable">{{ kpis().atRisk }}</div>
+        </button>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Unassigned</div><div class="text-[20px] font-semibold tabular-nums">{{ kpis().unassigned }}</div></div>
+        <div class="glass col-span-2 rounded-xl px-3 py-2 sm:col-span-1"><div class="text-[11px] text-ink/70">Response met · {{ reportDays }} days</div><div class="text-[20px] font-semibold tabular-nums">{{ pct(kpis().responseMet) }}</div></div>
+      </div>
+
+      <div class="glass mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+        <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist" aria-label="Support level">
+          <button type="button" role="tab" class="rounded-md px-2.5 py-1" [class]="level() === '' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="level() === ''" (click)="level.set('')">All</button>
+          @for (l of levels; track l.id) {
+            <button type="button" role="tab" class="rounded-md px-2.5 py-1" [class]="level() === l.id ? 'bg-white font-medium shadow-sm' : 'text-ink/70'" [style.color]="(level() === l.id ? l.color : null) | readable" [attr.aria-selected]="level() === l.id" [title]="store.supportLevel(l.id)?.name ?? ''" (click)="level.set(l.id)">
+              {{ l.label }} <span class="text-ink/70">{{ levelCounts()[l.id] }}</span>
+            </button>
+          }
+        </div>
+        <select class="input w-auto" aria-label="Filter by product" (change)="productFilter.set($any($event.target).value)">
+          <option value="">All products</option>
+          @for (p of supportProducts(); track p.id) {
+            <option [value]="p.id" [selected]="p.id === productFilter()">{{ p.name }}</option>
+          }
+        </select>
+        <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70"><input type="checkbox" class="accent-brand" [checked]="mine()" (change)="mine.set($any($event.target).checked)" /> Mine</label>
+        <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70"><input type="checkbox" class="accent-brand" [checked]="attention()" (change)="attention.set($any($event.target).checked)" /> Breached or at risk</label>
+        <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70"><input type="checkbox" class="accent-brand" [checked]="showResolved()" (change)="showResolved.set($any($event.target).checked)" /> Show resolved</label>
+        <div class="relative ml-auto min-w-[150px] flex-1 sm:max-w-56">
+          <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+          <input class="input pl-8" placeholder="Search tickets" aria-label="Search support tickets" [value]="query()" (input)="query.set($any($event.target).value)" />
+        </div>
+      </div>
+
+      @if (!queue().length) {
+        <div class="glass rounded-xl p-8 text-center">
+          <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="headset" [size]="18" /></div>
+          <p class="text-[13px] font-medium">Nothing in this queue</p>
+          <p class="text-[12px] text-ink/70">Support and request tickets, and tickets raised by production users, land here at L1.</p>
+        </div>
+      } @else {
+        <!-- Desktop table -->
+        <div class="glass hidden overflow-hidden rounded-xl md:block">
+          <table class="w-full table-fixed text-[12px]">
+            <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+              <tr class="border-b border-ink/10">
+                <th class="py-2 pl-3 pr-2 font-medium">Ticket</th>
+                <th class="w-12 py-2 pr-2 font-medium">Level</th>
+                <th class="w-16 py-2 pr-2 font-medium">Priority</th>
+                <th class="hidden w-32 py-2 pr-2 font-medium lg:table-cell">Assignee</th>
+                <th class="w-32 py-2 pr-2 font-medium">Response</th>
+                <th class="w-32 py-2 pr-2 font-medium">Resolution</th>
+                <th class="w-[150px] py-2 pr-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of queue(); track r.issue.id) {
+                @let i = r.issue;
+                @let t = typeOf(i.type);
+                @let lv = levelOf(i.supportLevel);
+                @let pr = priorityOf(i.priority);
+                @let assignee = store.userById(i.assigneeId);
+                <tr class="border-b border-ink/[0.06] last:border-0 hover:bg-white/50" [class.muted-row]="r.resolved">
+                  <td class="py-1.5 pl-3 pr-2">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <app-icon [name]="t.icon" [size]="14" [style.color]="(t.color) | readable" class="shrink-0" />
+                      <div class="min-w-0">
+                        <a [routerLink]="['/tickets', i.key]" class="flex min-w-0 items-center gap-1.5 hover:text-brand">
+                          <span class="shrink-0 font-mono text-[11px] text-ink/70">{{ i.key }}</span>
+                          <span class="truncate font-medium">{{ i.summary }}</span>
+                        </a>
+                        <div class="truncate text-[11px] text-ink/70">{{ productOf(i)?.name }}{{ clientName(i) ? ' · ' + clientName(i) : '' }} · by {{ store.userById(i.reporterId)?.name ?? '—' }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="py-1.5 pr-2"><span class="pill py-0" [style.color]="(lv.color) | readable" [title]="store.supportLevel(i.supportLevel)?.name ?? ''">{{ lv.label }}</span></td>
+                  <td class="py-1.5 pr-2 text-[11px]" [style.color]="(pr.color) | readable">{{ pr.label }}</td>
+                  <td class="hidden py-1.5 pr-2 lg:table-cell">
+                    <span class="flex min-w-0 items-center gap-1.5"><app-avatar [user]="assignee" size="sm" /><span class="truncate text-[11px]" [class.text-ink/70]="!assignee">{{ assignee?.name ?? 'Unassigned' }}</span></span>
+                  </td>
+                  @for (c of [r.sla.response, r.sla.resolution]; track $index) {
+                    <td class="py-1.5 pr-2">
+                      <div class="flex items-center gap-1.5 text-[11px]" [style.color]="(clockColors[c.state]) | readable" [title]="clockLabels[c.state] + ' · target ' + dur(c.targetMinutes)">
+                        <span class="h-1.5 w-1.5 shrink-0 rounded-full" [style.background]="clockColors[c.state]"></span>
+                        <span class="truncate font-medium">{{ clockLabel(c) }}</span>
+                      </div>
+                    </td>
+                  }
+                  <td class="py-1.5 pr-3 text-right">
+                    @if (!r.resolved && store.canEditIssue(i)) {
+                      <div class="flex justify-end gap-1">
+                        @if (i.assigneeId !== store.currentUser().id) {
+                          <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="assignToMe(i)">Take</button>
+                        }
+                        @if (nextOf(i)) {
+                          <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="openEscalate(i)">Escalate</button>
+                        }
+                      </div>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Phones: cards -->
+        <ul class="space-y-2 md:hidden">
+          @for (r of queue(); track r.issue.id) {
+            @let i = r.issue;
+            @let lv = levelOf(i.supportLevel);
+            @let pr = priorityOf(i.priority);
+            <li class="glass rounded-xl p-2.5" [class.muted-row]="r.resolved">
+              <a [routerLink]="['/tickets', i.key]" class="mb-1 flex items-center gap-1.5">
+                <span class="pill py-0" [style.color]="(lv.color) | readable">{{ lv.label }}</span>
+                <span class="font-mono text-[11px] text-ink/70">{{ i.key }}</span>
+                <span class="ml-auto text-[11px]" [style.color]="(pr.color) | readable">{{ pr.label }}</span>
+              </a>
+              <a [routerLink]="['/tickets', i.key]" class="block text-[13px] font-medium leading-snug">{{ i.summary }}</a>
+              <div class="mb-1.5 truncate text-[11px] text-ink/70">{{ productOf(i)?.name }} · {{ store.userById(i.assigneeId)?.name ?? 'Unassigned' }}</div>
+              <div class="grid grid-cols-2 gap-2 text-[11px]">
+                @for (c of [r.sla.response, r.sla.resolution]; track $index) {
+                  <div class="rounded-lg bg-white/55 px-2 py-1">
+                    <div class="text-[10px] text-ink/70">{{ $index === 0 ? 'Response' : 'Resolution' }}</div>
+                    <div class="font-medium" [style.color]="(clockColors[c.state]) | readable">{{ clockLabel(c) }}</div>
+                  </div>
+                }
+              </div>
+              @if (!r.resolved && store.canEditIssue(i)) {
+                <div class="mt-2 flex gap-1.5">
+                  @if (i.assigneeId !== store.currentUser().id) {
+                    <button type="button" class="btn-secondary flex-1 py-1 text-[12px]" (click)="assignToMe(i)">Take</button>
+                  }
+                  @if (nextOf(i)) {
+                    <button type="button" class="btn-secondary flex-1 py-1 text-[12px]" (click)="openEscalate(i)">Escalate to {{ levelOf(nextOf(i)).label }}</button>
+                  }
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      }
+    }
+
+    <!-- ================= SLA report ================= -->
+    @case ('report') {
+      @let rep = report();
+      <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Support tickets · {{ reportDays }} days</div><div class="text-[20px] font-semibold tabular-nums">{{ rep.all.total }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Response met</div><div class="text-[20px] font-semibold tabular-nums">{{ pct(rep.all.responseMet) }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Resolution met</div><div class="text-[20px] font-semibold tabular-nums">{{ pct(rep.all.resolutionMet) }}</div></div>
+        <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Breached now</div><div class="text-[20px] font-semibold tabular-nums" [style.color]="(rep.all.breachedNow ? clockColors.breached : null) | readable">{{ rep.all.breachedNow }}</div></div>
+      </div>
+
+      @for (block of [{ title: 'By support level', rows: rep.levels, kind: 'level' }, { title: 'By product', rows: rep.products, kind: 'product' }, { title: 'By client', rows: rep.clients, kind: 'client' }]; track block.kind) {
+        <section class="glass mb-3 rounded-xl p-3" [attr.aria-label]="block.title">
+          <h2 class="section-title mb-2">{{ block.title }}</h2>
+          @if (!block.rows.length) {
+            <p class="text-[12px] text-ink/70">No support tickets in the last {{ reportDays }} days.</p>
+          } @else {
+            <table class="w-full table-fixed text-[12px]">
+              <thead class="text-left text-[11px] text-ink/70">
+                <tr class="border-b border-ink/10">
+                  <th class="py-1.5 pr-2 font-medium">{{ block.kind === 'level' ? 'Level' : block.kind === 'product' ? 'Product' : 'Client' }}</th>
+                  <th class="w-14 py-1.5 pr-2 text-right font-medium">Tickets</th>
+                  <th class="w-12 py-1.5 pr-2 text-right font-medium">Open</th>
+                  <th class="w-20 py-1.5 pr-2 text-right font-medium">Response met</th>
+                  <th class="hidden w-24 py-1.5 pr-2 text-right font-medium sm:table-cell">Avg response</th>
+                  <th class="w-20 py-1.5 pr-2 text-right font-medium">Resolution met</th>
+                  <th class="hidden w-24 py-1.5 pr-2 text-right font-medium sm:table-cell">Avg resolution</th>
+                  <th class="hidden w-20 py-1.5 text-right font-medium md:table-cell">Breached now</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (r of $any(block.rows); track $index) {
+                  <tr class="border-b border-ink/[0.06] last:border-0">
+                    <td class="py-1.5 pr-2">
+                      <span class="flex min-w-0 items-center gap-1.5">
+                        @if (r.meta) {
+                          <span class="pill shrink-0 py-0" [style.color]="(r.meta.color) | readable">{{ r.meta.label }}</span>
+                        } @else if (r.color) {
+                          <span class="h-2 w-2 shrink-0 rounded-full" [style.background]="r.color"></span>
+                        }
+                        <span class="truncate font-medium">{{ r.name }}</span>
+                      </span>
+                    </td>
+                    <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.total }}</td>
+                    <td class="py-1.5 pr-2 text-right tabular-nums">{{ r.open }}</td>
+                    <td class="py-1.5 pr-2 text-right tabular-nums">{{ pct(r.responseMet) }}</td>
+                    <td class="hidden py-1.5 pr-2 text-right tabular-nums sm:table-cell">{{ avg(r.avgResponse) }}</td>
+                    <td class="py-1.5 pr-2 text-right tabular-nums">{{ pct(r.resolutionMet) }}</td>
+                    <td class="hidden py-1.5 pr-2 text-right tabular-nums sm:table-cell">{{ avg(r.avgResolution) }}</td>
+                    <td class="hidden py-1.5 text-right tabular-nums md:table-cell" [class.font-semibold]="r.breachedNow" [class.text-red-700]="r.breachedNow">{{ r.breachedNow }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </section>
+      }
+      <p class="text-[11px] text-ink/70">Tickets raised in the last {{ reportDays }} days. "Met" counts only clocks that have stopped (answered / resolved).</p>
+    }
+
+    <!-- ================= Settings ================= -->
+    @case ('settings') {
+      <app-sla-settings (saved)="showToast($event)" />
+    }
+  }
+
+  <!-- Escalate -->
+  <app-modal [open]="!!escalating()" [heading]="'Escalate ' + (escalating()?.key ?? '')" (closed)="escalating.set(undefined)">
+    @if (escalating(); as i) {
+      @let to = nextOf(i);
+      <p class="mb-2 text-[13px] text-ink/70">
+        Moves <strong class="text-ink">{{ i.key }}</strong> from {{ levelOf(i.supportLevel).label }} to
+        <strong [style.color]="(levelOf(to).color) | readable">{{ levelOf(to).label }} · {{ store.supportLevel(to)?.name }}</strong>{{ teamName(to) ? ' (' + teamName(to) + ')' : '' }}.
+        It leaves the current assignee and waits in that level's queue. The SLA targets switch to {{ levelOf(to).label }}'s.
+      </p>
+      <label class="label" for="esc-reason">Reason (added as a comment)</label>
+      <textarea id="esc-reason" class="input min-h-16" [value]="reason()" (input)="reason.set($any($event.target).value)" placeholder="What was tried, why it needs the next level"></textarea>
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="escalating.set(undefined)">Cancel</button>
+      <button type="button" class="btn-primary" (click)="confirmEscalate()">Escalate</button>
+    </div>
+  </app-modal>
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

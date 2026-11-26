@@ -1,0 +1,341 @@
+@if (issue(); as i) {
+  @let t = typeOf(i.type);
+  @let pr = priorityOf(i.priority);
+  <div class="mx-auto max-w-[1400px]">
+    <!-- Breadcrumb -->
+    <nav class="mb-2 flex items-center gap-1 text-[12px] text-ink/70" aria-label="Breadcrumb">
+      <a [routerLink]="backLink()" class="hover:text-brand">{{ backLink() === '/tickets' ? 'Tickets' : 'My Requests' }}</a>
+      <app-icon name="chevron-right" [size]="12" />
+      @if (backLink() === '/tickets') {
+        <a routerLink="/tickets" [queryParams]="{ product: i.productId }" class="hover:text-brand">{{ product()?.name }}</a>
+      } @else {
+        <span>{{ product()?.name }}</span>
+      }
+      @if (parent(); as p) {
+        <app-icon name="chevron-right" [size]="12" />
+        <a [routerLink]="['/tickets', p.key]" class="hover:text-brand">{{ p.key }}</a>
+      }
+      <app-icon name="chevron-right" [size]="12" />
+      <span class="font-mono text-ink/80">{{ i.key }}</span>
+    </nav>
+
+    <!-- Header -->
+    <header class="glass mb-3 rounded-xl p-3.5">
+      <div class="flex flex-wrap items-start gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg" [style.color]="(t.color) | readable" [style.background]="tint(t.color)" [title]="t.label">
+          <app-icon [name]="t.icon" [size]="18" />
+        </span>
+        <div class="min-w-0 flex-1 basis-60">
+          <div class="flex items-center gap-2 text-[11px] text-ink/70">
+            <span class="font-mono">{{ i.key }}</span><span>·</span><span>{{ t.label }}</span>
+            @if (overdue()) {
+              <span class="pill py-0 text-red-700">Overdue</span>
+            }
+          </div>
+          <h1 class="mt-0.5 text-[17px] font-semibold leading-snug">{{ i.summary }}</h1>
+        </div>
+        <div class="flex w-full flex-wrap items-center justify-end gap-1.5 sm:w-auto">
+          @if (canTime()) {
+            <button type="button" class="px-3 py-1.5 text-[12px]" [class]="timerHere() ? 'btn-danger' : 'btn-secondary'" (click)="toggleTimer()">
+              <app-icon [name]="timerHere() ? 'stop' : 'play'" [size]="12" /> {{ timerHere() ? 'Stop timer' : 'Start timer' }}
+            </button>
+          }
+          @if (canEdit()) {
+            <button type="button" class="btn-primary px-3 py-1.5 text-[12px]" (click)="edit()"><app-icon name="pencil" [size]="12" /> Edit</button>
+          }
+          @if (canDelete()) {
+            <button type="button" class="icon-btn h-8 w-8 hover:text-red-700" aria-label="Delete ticket" title="Delete ticket" (click)="confirmDelete.set(true)">
+              <app-icon name="trash" [size]="15" />
+            </button>
+          }
+        </div>
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-ink/10 pt-2.5 text-[12px]">
+        <label class="relative inline-flex items-center" [style.color]="(status()?.color) | readable">
+          <span class="sr-only">Status</span>
+          @if (canEdit()) {
+            <select class="pill cursor-pointer appearance-none py-1 pr-6 text-[12px] focus:ring-2 focus:ring-brand/30" (change)="setStatus($event)">
+              @for (s of allowedStatuses(); track s.id) {
+                <option class="text-ink" [value]="s.id" [selected]="s.id === i.statusId">{{ s.name }}</option>
+              }
+            </select>
+            <app-icon name="chevron-down" [size]="11" class="pointer-events-none absolute right-2" />
+          } @else {
+            <span class="pill py-1 text-[12px]">{{ status()?.name }}</span>
+          }
+        </label>
+        <span class="pill" [style.color]="(pr.color) | readable">{{ pr.label }}</span>
+        <span class="tag">{{ sprint()?.name ?? 'Backlog' }}</span>
+        <span class="flex items-center gap-1.5 text-ink/70"><app-avatar [user]="store.userById(i.assigneeId)" size="sm" />{{ store.userById(i.assigneeId)?.name ?? 'Unassigned' }}</span>
+        <span class="ml-auto flex items-center gap-2">
+          <span class="text-ink/70">Done</span>
+          <span class="h-1.5 w-24 overflow-hidden rounded-full bg-ink/10"><span class="block h-full rounded-full bg-pastel-green" [style.width.%]="i.progress ?? 0"></span></span>
+          <span class="font-semibold tabular-nums">{{ i.progress ?? 0 }}%</span>
+        </span>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <!-- ===== Left ===== -->
+      <div class="min-w-0 space-y-3">
+        <section class="glass rounded-xl p-3.5" aria-labelledby="desc-h">
+          <div class="mb-1.5 flex items-center justify-between">
+            <h2 id="desc-h" class="section-title">Description</h2>
+            @if (canEdit()) {
+              <button type="button" class="text-[12px] text-brand hover:underline" (click)="edit()">Edit</button>
+            }
+          </div>
+          @if (i.description) {
+            <p class="whitespace-pre-wrap text-[13px] leading-relaxed text-ink/85">{{ i.description }}</p>
+          } @else {
+            <p class="text-[12px] text-ink/70">No description yet.</p>
+          }
+          @if (i.labels.length) {
+            <div class="mt-2.5 flex flex-wrap gap-1">
+              @for (l of i.labels; track l) {
+                <span class="tag">{{ l }}</span>
+              }
+            </div>
+          }
+        </section>
+
+        <section class="glass rounded-xl p-3.5" aria-labelledby="benefit-h">
+          <div class="mb-1.5 flex items-center justify-between">
+            <h2 id="benefit-h" class="section-title flex items-center gap-1.5"><app-icon name="target" [size]="12" /> Benefits</h2>
+            @if (canEdit()) {
+              <button type="button" class="text-[12px] text-brand hover:underline" (click)="edit()">Edit</button>
+            }
+          </div>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="rounded-lg bg-white/60 p-2.5">
+              <div class="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-ink/70"><app-icon name="target" [size]="11" /> Estimated</div>
+              <p class="whitespace-pre-wrap text-[12px]" [class.text-ink/70]="!i.estimatedBenefits">{{ i.estimatedBenefits || 'Not set' }}</p>
+            </div>
+            <div class="rounded-lg bg-white/60 p-2.5">
+              <div class="mb-0.5 flex items-center gap-1 text-[11px] font-medium text-ink/70"><app-icon name="trophy" [size]="11" /> Achieved</div>
+              <p class="whitespace-pre-wrap text-[12px]" [class.text-ink/70]="!i.achievedBenefits">{{ i.achievedBenefits || 'Not recorded yet' }}</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="glass rounded-xl p-3.5" aria-labelledby="child-h">
+          <div class="mb-1.5 flex items-center justify-between">
+            <h2 id="child-h" class="section-title flex items-center gap-1.5"><app-icon name="git-branch" [size]="12" /> Child tickets ({{ children().length }})</h2>
+            @if (canEdit()) {
+              <button type="button" class="text-[12px] text-brand hover:underline" (click)="addChild()">+ Add child ticket</button>
+            }
+          </div>
+          <ul class="divide-y divide-ink/[0.06]">
+            @for (c of children(); track c.id) {
+              @let ct = typeOf(c.type);
+              @let cs = statusOf(c);
+              <li class="flex items-center gap-2 py-1.5 text-[12px]">
+                <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded" [style.color]="(ct.color) | readable" [style.background]="tint(ct.color)">
+                  <app-icon [name]="ct.icon" [size]="11" />
+                </span>
+                <a class="font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', c.key]">{{ c.key }}</a>
+                <a class="min-w-0 flex-1 truncate hover:text-brand" [routerLink]="['/tickets', c.key]">{{ c.summary }}</a>
+                <span class="pill py-0 text-[10.5px]" [style.color]="(cs?.color) | readable">{{ cs?.name }}</span>
+                <app-avatar [user]="store.userById(c.assigneeId)" size="sm" />
+              </li>
+            } @empty {
+              <li class="py-1 text-[12px] text-ink/70">No child tickets.</li>
+            }
+          </ul>
+        </section>
+
+        <section class="glass rounded-xl p-3.5">
+          <div class="mb-3 flex flex-wrap gap-1 border-b border-ink/10 text-[12px]" role="tablist">
+            @for (tb of [{ id: 'comments', label: 'Comments', icon: 'message' }, { id: 'time', label: 'Log hours', icon: 'timer' }, { id: 'files', label: 'Files', icon: 'paperclip' }, { id: 'history', label: 'History', icon: 'clock' }]; track tb.id) {
+              @if (tb.id !== 'time' || canTime()) {
+              <button
+                type="button"
+                role="tab"
+                class="-mb-px flex items-center gap-1 border-b-2 px-2.5 py-1.5"
+                [class]="tab() === tb.id ? 'border-brand font-medium text-brand' : 'border-transparent text-ink/70 hover:text-ink'"
+                [attr.aria-selected]="tab() === tb.id"
+                (click)="tab.set($any(tb.id))"
+              >
+                <app-icon [name]="$any(tb.icon)" [size]="13" /> {{ tb.label }}
+                <span class="text-ink/70">{{ $any(counts())[tb.id] }}</span>
+              </button>
+              }
+            }
+          </div>
+          @switch (tab()) {
+            @case ('comments') {
+              <app-comments-panel [issueId]="i.id" />
+            }
+            @case ('time') {
+              <div class="max-w-xl"><app-time-log-panel [issueId]="i.id" /></div>
+            }
+            @case ('files') {
+              <div class="max-w-xl"><app-attachments-panel [issueId]="i.id" /></div>
+            }
+            @case ('history') {
+              <ol class="space-y-2">
+                @for (a of history(); track a.id) {
+                  <li class="flex items-start gap-2 text-[12px]">
+                    <app-avatar [user]="store.userById(a.userId)" size="sm" />
+                    <div>
+                      <span class="font-medium">{{ userName(a.userId) }}</span>
+                      <span class="text-ink/70"> {{ describe(a) }}</span>
+                      <div class="text-[11px] text-ink/70">{{ a.createdAt | date: 'MMM d, y, HH:mm' }}</div>
+                    </div>
+                  </li>
+                } @empty {
+                  <li class="text-[12px] text-ink/70">No history recorded yet. Changes from now on will appear here.</li>
+                }
+              </ol>
+            }
+          }
+        </section>
+      </div>
+
+      <!-- ===== Right ===== -->
+      <aside class="space-y-3" aria-label="Ticket details">
+        @if (sla(); as s) {
+          @let lv = levelOf(s.level);
+          <section class="glass rounded-xl p-3.5" aria-labelledby="sla-h">
+            <div class="mb-2 flex items-center gap-2">
+              <h2 id="sla-h" class="section-title">Support SLA</h2>
+              <span class="pill py-0" [style.color]="(lv.color) | readable">{{ lv.label }} · {{ store.supportLevel(s.level)?.name }}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              @for (c of [s.response, s.resolution]; track $index) {
+                <div class="rounded-lg bg-white/60 px-2.5 py-1.5" [title]="'Target ' + dur(c.targetMinutes)">
+                  <div class="flex items-center justify-between text-[10px] text-ink/70">
+                    <span>{{ $index === 0 ? 'First response' : 'Resolution' }}</span>
+                    <span class="font-medium" [style.color]="(clockColors[c.state]) | readable">{{ clockLabels[c.state] }}</span>
+                  </div>
+                  <div class="text-[13px] font-semibold" [style.color]="(clockColors[c.state]) | readable">{{ clockLabel(c) }}</div>
+                  <div class="text-[10px] text-ink/70">target {{ dur(c.targetMinutes) }} · due {{ c.dueAt | date: 'MMM d, HH:mm' }}</div>
+                </div>
+              }
+            </div>
+            @if (nextLevel() && canEdit() && !store.isResolved(i)) {
+              <button type="button" class="btn-secondary mt-2 w-full py-1 text-[12px]" (click)="escalateOpen.set(true)">Escalate to {{ levelOf(nextLevel()).label }}</button>
+            }
+          </section>
+        }
+        <section class="glass rounded-xl p-3.5" aria-labelledby="details-h">
+          <h2 id="details-h" class="section-title mb-2">Details</h2>
+          <dl class="grid grid-cols-[96px_minmax(0,1fr)] gap-x-2 gap-y-2 text-[12px]">
+            <dt class="text-ink/70">Product</dt>
+            <dd class="flex min-w-0 items-center gap-1.5"><span class="h-2 w-2 shrink-0 rounded-full" [style.background]="product()?.color"></span><span class="truncate">{{ product()?.name }}</span></dd>
+            <dt class="text-ink/70">Parent</dt>
+            <dd class="truncate">
+              @if (parent(); as p) {
+                <a class="text-brand hover:underline" [routerLink]="['/tickets', p.key]" [title]="p.summary">{{ p.key }} · {{ p.summary }}</a>
+              } @else {
+                <span class="text-ink/70">None</span>
+              }
+            </dd>
+            <dt class="text-ink/70">Sprint</dt>
+            <dd class="truncate">{{ sprint()?.name ?? 'Backlog' }}@if (sprint()?.state === 'active') { <span class="text-pastel-green"> · active</span> }</dd>
+            <dt class="text-ink/70">Assignee</dt>
+            <dd class="flex min-w-0 items-center gap-1.5"><app-avatar [user]="store.userById(i.assigneeId)" size="sm" /><span class="truncate">{{ store.userById(i.assigneeId)?.name ?? 'Unassigned' }}</span></dd>
+            <dt class="text-ink/70">Reporter</dt>
+            <dd class="flex min-w-0 items-center gap-1.5"><app-avatar [user]="store.userById(i.reporterId)" size="sm" /><span class="truncate">{{ userName(i.reporterId) }}</span></dd>
+            <dt class="text-ink/70">Client</dt>
+            <dd class="truncate" [class.text-ink/70]="!client()">{{ client()?.name ?? 'None' }}</dd>
+            <dt class="text-ink/70">Story points</dt>
+            <dd>{{ i.storyPoints ?? '—' }}</dd>
+            <dt class="text-ink/70">Round</dt>
+            <dd>{{ i.round ?? '—' }}</dd>
+            @for (cf of customFields(); track cf.field.id) {
+              <dt class="truncate text-ink/70" [title]="cf.field.name">{{ cf.field.name }}</dt>
+              <dd class="break-words" [class.text-ink/70]="!cf.text">{{ cf.text || '—' }}</dd>
+            }
+          </dl>
+        </section>
+
+        <section class="glass rounded-xl p-3.5" aria-labelledby="dates-h">
+          <h2 id="dates-h" class="section-title mb-2">Dates &amp; time</h2>
+          <dl class="grid grid-cols-[96px_minmax(0,1fr)] gap-x-2 gap-y-2 text-[12px]">
+            <dt class="text-ink/70">Start date</dt>
+            <dd>{{ i.startDate ? (i.startDate | date: 'MMM d, y') : '—' }}</dd>
+            <dt class="text-ink/70">Due date</dt>
+            <dd [class.font-medium]="overdue()" [class.text-red-700]="overdue()">{{ i.dueDate ? (i.dueDate | date: 'MMM d, y') : '—' }}{{ overdue() ? ' · overdue' : '' }}</dd>
+            <dt class="text-ink/70">Estimate</dt>
+            <dd>{{ i.estimateMinutes ? fmt(i.estimateMinutes) : '—' }}</dd>
+            <dt class="text-ink/70">Logged</dt>
+            <dd [class.text-red-700]="!!i.estimateMinutes && logged() > i.estimateMinutes">{{ logged() ? fmt(logged()) : '—' }}</dd>
+            <dt class="text-ink/70">Work started</dt>
+            <dd>{{ i.startAt ? (i.startAt | date: 'MMM d, HH:mm') : '—' }}</dd>
+            <dt class="text-ink/70">Finished</dt>
+            <dd>{{ i.endAt ? (i.endAt | date: 'MMM d, HH:mm') : '—' }}</dd>
+            <dt class="text-ink/70">Created</dt>
+            <dd>{{ i.createdAt | date: 'MMM d, y' }}</dd>
+            <dt class="text-ink/70">Updated</dt>
+            <dd>{{ i.updatedAt | date: 'MMM d, HH:mm' }}</dd>
+          </dl>
+          @if (byActivity().length) {
+            <div class="mt-3 border-t border-ink/10 pt-2.5">
+              <div class="section-title mb-1.5">Hours by activity</div>
+              <ul class="space-y-1.5">
+                @for (a of byActivity(); track a.id) {
+                  <li class="text-[12px]">
+                    <div class="flex justify-between"><span>{{ a.label }}</span><span class="tabular-nums text-ink/70">{{ fmt(a.minutes) }}</span></div>
+                    <div class="mt-0.5 h-1 overflow-hidden rounded-full bg-ink/10">
+                      <div class="h-full rounded-full" [style.background]="a.color" [style.width.%]="(a.minutes / logged()) * 100"></div>
+                    </div>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+        </section>
+      </aside>
+    </div>
+
+    <app-ticket-form
+      [open]="formOpen()"
+      [issue]="editing()"
+      [defaultProductId]="i.productId"
+      [defaultParentId]="childParent()"
+      (closed)="formOpen.set(false)"
+      (saved)="showToast($event)"
+    />
+
+    <app-modal [open]="escalateOpen()" [heading]="'Escalate ' + i.key" (closed)="escalateOpen.set(false)">
+      <p class="mb-2 text-[13px] text-ink/70">
+        Moves the ticket to <strong>{{ levelOf(nextLevel()).label }} · {{ store.supportLevel(nextLevel())?.name }}</strong>. It leaves the current assignee and the SLA targets
+        switch to that level's.
+      </p>
+      <label class="label" for="td-esc">Reason (added as a comment)</label>
+      <textarea id="td-esc" class="input min-h-16" [value]="escalateReason()" (input)="escalateReason.set($any($event.target).value)" placeholder="What was tried, why it needs the next level"></textarea>
+      <div footer class="contents">
+        <button type="button" class="btn-secondary" (click)="escalateOpen.set(false)">Cancel</button>
+        <button type="button" class="btn-primary" (click)="escalate()">Escalate</button>
+      </div>
+    </app-modal>
+
+    <app-modal [open]="confirmDelete()" heading="Delete ticket?" (closed)="confirmDelete.set(false)">
+      <p class="text-[13px] text-ink/70">
+        <strong class="text-ink">{{ i.key }}</strong> “{{ i.summary }}” and its comments, attachments and logged hours will be deleted.
+        {{ children().length ? children().length + ' child ticket(s) will keep existing without a parent. ' : '' }}This cannot be undone.
+      </p>
+      <div footer class="contents">
+        <button type="button" class="btn-secondary" (click)="confirmDelete.set(false)">Cancel</button>
+        <button type="button" class="btn-danger" (click)="deleteTicket()">Delete ticket</button>
+      </div>
+    </app-modal>
+
+    @if (toast()) {
+      <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+    }
+  </div>
+} @else {
+  <div class="glass mx-auto mt-10 max-w-md rounded-xl p-8 text-center">
+    <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="ticket" [size]="18" /></div>
+    @if (noAccess()) {
+      <p class="text-[14px] font-semibold">You don't have access to {{ key() }}</p>
+      <p class="mb-4 text-[12px] text-ink/70">It belongs to a product or person outside what your role can see. Ask your manager if you need it.</p>
+    } @else {
+      <p class="text-[14px] font-semibold">Ticket {{ key() }} not found</p>
+      <p class="mb-4 text-[12px] text-ink/70">It may have been deleted, or the link is wrong.</p>
+    }
+    <a [routerLink]="backLink()" class="btn-primary">Back to {{ backLink() === '/tickets' ? 'tickets' : 'my requests' }}</a>
+  </div>
+}

@@ -1,0 +1,337 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Workflows & Fields">
+    @if (tab() === 'workflows') {
+      <button type="button" class="btn-primary" (click)="openNew()"><app-icon name="plus" [size]="15" /> New workflow</button>
+    } @else {
+      <button type="button" class="btn-primary" (click)="openField()"><app-icon name="plus" [size]="15" /> Add field</button>
+    }
+  </app-page-header>
+
+  <!-- Tabs + workflow picker -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2">
+    <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'workflows' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'workflows'" (click)="tab.set('workflows')">
+        Workflows ({{ store.workflows().length }})
+      </button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'fields' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'fields'" (click)="tab.set('fields')">
+        Custom fields ({{ store.customFields().length }})
+      </button>
+    </div>
+    @if (tab() === 'workflows') {
+      <div class="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Workflow">
+        @for (w of store.workflows(); track w.id) {
+          <button type="button" role="radio" class="chip" [class]="w.id === workflow().id ? 'chip-on' : 'chip-off'" [attr.aria-checked]="w.id === workflow().id" (click)="selectedId.set(w.id)">
+            <app-icon name="workflow" [size]="12" />{{ w.name }}<span class="ml-1">· {{ wfUsage(w.id) }}</span>
+          </button>
+        }
+      </div>
+    }
+  </div>
+
+  @if (tab() === 'workflows') {
+    @let wf = workflow();
+    <div class="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_290px]">
+      <!-- Statuses -->
+      <section class="glass rounded-xl p-3" aria-labelledby="statuses-h">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+          <input class="input min-w-0 flex-1 basis-full border-transparent bg-transparent px-1.5 py-1 text-[14px] font-semibold hover:border-ink/10 sm:max-w-80 sm:basis-auto" [value]="wf.name" (change)="rename($event)" aria-label="Workflow name" />
+          <span class="text-[11px] text-ink/70">Used by {{ usedBy().length }} product(s) · {{ wf.statuses.length }} statuses</span>
+          <button
+            type="button"
+            class="icon-btn ml-auto h-7 w-7 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+            [disabled]="usedBy().length > 0 || store.workflows().length <= 1"
+            [title]="usedBy().length ? 'Assign its products to another workflow first' : store.workflows().length <= 1 ? 'The last workflow cannot be deleted' : 'Delete workflow'"
+            aria-label="Delete workflow"
+            (click)="confirmDeleteWf.set(true)"
+          >
+            <app-icon name="trash" [size]="14" />
+          </button>
+        </div>
+        <h2 id="statuses-h" class="section-title mb-1.5">Statuses <span class="font-normal normal-case text-ink/70">— drag or use the arrows to reorder (board columns follow this order)</span></h2>
+
+        <ul class="space-y-1" cdkDropList cdkDropListLockAxis="y" [cdkDropListData]="wf.statuses" (cdkDropListDropped)="drop($event)">
+          @for (s of wf.statuses; track s.id; let idx = $index) {
+            <li class="flex items-center gap-1.5 rounded-lg border border-ink/[0.07] bg-white/60 px-1.5 py-1" cdkDrag>
+              <span class="cursor-grab text-ink/70 hover:text-ink/70 active:cursor-grabbing" cdkDragHandle aria-hidden="true" title="Drag to reorder (or use the arrows)">
+                <app-icon name="grip" [size]="14" />
+              </span>
+              <span class="w-4 text-right text-[10.5px] tabular-nums text-ink/70">{{ idx + 1 }}</span>
+              <label class="relative h-5 w-5 shrink-0 cursor-pointer overflow-hidden rounded-full border border-white shadow-sm" [style.background]="s.color" [title]="'Colour of ' + s.name">
+                <span class="sr-only">Colour of {{ s.name }}</span>
+                <input type="color" class="absolute inset-0 cursor-pointer opacity-0" [value]="s.color" (change)="setColor(s, $event)" />
+              </label>
+              <input class="input min-w-0 flex-1 px-2 py-0.5 text-[12px] font-medium" [style.color]="(s.color) | readable" [value]="s.name" (change)="renameStatus(s, $event)" (keydown.enter)="$any($event.target).blur()" [attr.aria-label]="'Name of status ' + (idx + 1)" />
+              <select class="input w-24 shrink-0 px-1.5 py-0.5 text-[11.5px] sm:w-28" (change)="setCategory(s, $event)" [attr.aria-label]="'Category of ' + s.name" [title]="categoryOf(s.category).hint">
+                @for (c of categories; track c.id) {
+                  <option [value]="c.id" [selected]="c.id === s.category">{{ c.label }}</option>
+                }
+              </select>
+              <span class="hidden w-16 shrink-0 text-right text-[11px] tabular-nums text-ink/70 sm:inline" [title]="usage()[s.id] + ' ticket(s) in this status'">{{ usage()[s.id] }} ticket{{ usage()[s.id] === 1 ? '' : 's' }}</span>
+              <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink disabled:opacity-30" [disabled]="idx === 0" [attr.aria-label]="'Move ' + s.name + ' up'" title="Move up" (click)="store.moveStatus(wf.id, idx, idx - 1)">
+                <app-icon name="chevron-up" [size]="13" />
+              </button>
+              <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink disabled:opacity-30" [disabled]="idx === wf.statuses.length - 1" [attr.aria-label]="'Move ' + s.name + ' down'" title="Move down" (click)="store.moveStatus(wf.id, idx, idx + 1)">
+                <app-icon name="chevron-down" [size]="13" />
+              </button>
+              <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-red-50 hover:text-red-700 disabled:opacity-30" [disabled]="wf.statuses.length <= 1" [attr.aria-label]="'Delete status ' + s.name" title="Delete status" (click)="askDeleteStatus(s)">
+                <app-icon name="trash" [size]="13" />
+              </button>
+              <div *cdkDragPlaceholder class="h-8 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5"></div>
+            </li>
+          }
+        </ul>
+
+        <form class="mt-2 flex flex-wrap items-center gap-1.5 border-t border-ink/10 pt-2" (submit)="$event.preventDefault(); addStatus()">
+          <input class="input min-w-40 flex-1 py-1 text-[12px]" placeholder="New status name, e.g. Code review" [value]="addName()" (input)="addName.set(val($event))" aria-label="New status name" />
+          <select class="input w-28 py-1 text-[12px]" (change)="addCategory.set($any(val($event)))" aria-label="New status category">
+            @for (c of categories; track c.id) {
+              <option [value]="c.id" [selected]="c.id === addCategory()">{{ c.label }}</option>
+            }
+          </select>
+          <button type="submit" class="btn-secondary py-1 text-[12px]" [disabled]="!addName().trim()"><app-icon name="plus" [size]="13" /> Add status</button>
+        </form>
+      </section>
+
+      <!-- Right: products + categories -->
+      <aside class="space-y-3" aria-label="Products and workflows">
+        <section class="glass rounded-xl p-3" aria-labelledby="assign-h">
+          <h2 id="assign-h" class="section-title mb-1">Products</h2>
+          <p class="mb-2 text-[11px] text-ink/70">Switching keeps ticket statuses the new workflow also has; others move to its first status of the same category.</p>
+          <ul class="space-y-1.5">
+            @for (p of store.products(); track p.id) {
+              <li class="flex items-center gap-2 text-[12px]">
+                <span class="h-2 w-2 shrink-0 rounded-full" [style.background]="p.color"></span>
+                <span class="min-w-0 flex-1 truncate" [title]="p.name">{{ p.name }}</span>
+                <select class="input w-40 shrink-0 px-1.5 py-0.5 text-[11.5px]" (change)="assign(p.id, $event)" [attr.aria-label]="'Workflow for ' + p.name">
+                  @for (w of store.workflows(); track w.id) {
+                    <option [value]="w.id" [selected]="w.id === p.workflowId">{{ w.name }}</option>
+                  }
+                </select>
+              </li>
+            }
+          </ul>
+        </section>
+        <section class="glass rounded-xl p-3" aria-labelledby="cat-h">
+          <h2 id="cat-h" class="section-title mb-1.5">Categories</h2>
+          <ul class="space-y-1 text-[11.5px]">
+            @for (c of categories; track c.id) {
+              <li class="flex items-start gap-1.5"><span class="pill shrink-0 py-0 text-[10.5px]" [style.color]="(c.color) | readable">{{ c.label }}</span><span class="text-ink/70">{{ c.hint }}</span></li>
+            }
+          </ul>
+        </section>
+      </aside>
+    </div>
+
+    <!-- Transition rules -->
+    <section class="glass mt-3 rounded-xl p-3" aria-labelledby="rules-h">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <div class="min-w-0">
+          <h2 id="rules-h" class="text-[13px] font-semibold">Transition rules</h2>
+          <p class="text-[11px] text-ink/70">Which status a ticket may move to from each status. Enforced on the board, the tickets list, the ticket page and the edit dialog.</p>
+        </div>
+        <label class="ml-auto flex cursor-pointer items-center gap-2 text-[12px] font-medium">
+          <input type="checkbox" class="peer sr-only" [checked]="restricted()" (change)="toggleRestricted($event)" />
+          <span class="relative h-4.5 w-8 rounded-full bg-ink/20 transition peer-checked:bg-brand after:absolute after:left-0.5 after:top-0.5 after:h-3.5 after:w-3.5 after:rounded-full after:bg-white after:shadow after:transition peer-checked:after:translate-x-3.5"></span>
+          Restrict transitions
+        </label>
+      </div>
+
+      @if (!restricted()) {
+        <p class="rounded-lg bg-white/50 px-3 py-2 text-[12px] text-ink/70">Rules are off: any status can move to any other status. Switch on <em>Restrict transitions</em> to choose the allowed moves.</p>
+      } @else {
+        <div class="mb-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="store.setAllTransitions(wf.id, true)">Allow all</button>
+          <button type="button" class="btn-secondary px-2 py-0.5 text-[11px]" (click)="store.setAllTransitions(wf.id, false)">Clear all</button>
+          <span class="text-ink/70">Rows = from, columns = to. A ticket can always stay in its current status.</span>
+        </div>
+
+        <!-- Matrix (tablet and up) -->
+        <table class="hidden w-full table-fixed text-[11px] md:table">
+          <thead>
+            <tr class="border-b border-ink/10 align-bottom text-ink/70">
+              <th class="w-44 py-1.5 pr-2 text-left font-medium">From \ To</th>
+              @for (to of wf.statuses; track to.id) {
+                <th class="px-0.5 py-1.5 text-center text-[10.5px] font-medium leading-tight break-words" [style.color]="(to.color) | readable" [title]="to.name">{{ to.name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (from of wf.statuses; track from.id) {
+              <tr class="border-b border-ink/[0.06] last:border-0 hover:bg-white/40">
+                <td class="py-1 pr-2">
+                  <div class="flex items-center gap-1.5">
+                    <span class="h-2 w-2 shrink-0 rounded-full" [style.background]="from.color"></span>
+                    <span class="truncate font-medium" [title]="from.name">{{ from.name }}</span>
+                    <span class="ml-auto shrink-0 tabular-nums text-ink/70">{{ outCount(from.id) }}</span>
+                  </div>
+                </td>
+                @for (to of wf.statuses; track to.id) {
+                  <td class="py-1 text-center">
+                    @if (from.id === to.id) {
+                      <span class="text-ink/25">—</span>
+                    } @else {
+                      <input type="checkbox" class="h-3.5 w-3.5 cursor-pointer accent-brand align-middle" [checked]="allowed(from.id, to.id)" (change)="toggle(from.id, to.id)" [attr.aria-label]="'Allow ' + from.name + ' to ' + to.name" />
+                    }
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        <!-- Phones: one block per status with toggle chips -->
+        <div class="space-y-2 md:hidden">
+          @for (from of wf.statuses; track from.id) {
+            <div class="rounded-lg bg-white/50 p-2">
+              <div class="mb-1 flex items-center gap-1.5 text-[12px] font-medium">
+                <span class="h-2 w-2 rounded-full" [style.background]="from.color"></span>{{ from.name }}
+                <span class="ml-auto text-[11px] font-normal text-ink/70">{{ outCount(from.id) }} allowed</span>
+              </div>
+              <div class="flex flex-wrap gap-1">
+                @for (to of wf.statuses; track to.id) {
+                  @if (to.id !== from.id) {
+                    <button type="button" class="chip px-2 py-0.5 text-[10.5px]" [class]="allowed(from.id, to.id) ? 'chip-on' : 'chip-off'" [attr.aria-pressed]="allowed(from.id, to.id)" (click)="toggle(from.id, to.id)">{{ to.name }}</button>
+                  }
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  } @else {
+    <!-- Custom fields -->
+    @if (fields().length === 0) {
+      <div class="glass rounded-xl p-8 text-center">
+        <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="tag" [size]="18" /></div>
+        <p class="text-[13px] font-medium">No custom fields yet</p>
+        <p class="mb-3 text-[12px] text-ink/70">Add extra ticket fields — text, number, date, dropdown or checkbox — for all products or one.</p>
+        <button type="button" class="btn-primary" (click)="openField()"><app-icon name="plus" [size]="15" /> Add field</button>
+      </div>
+    } @else {
+      <div class="glass overflow-hidden rounded-xl">
+        <table class="w-full table-fixed text-[12px]">
+          <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+            <tr class="border-b border-ink/10">
+              <th class="py-2 pl-3 pr-2 font-medium">Field</th>
+              <th class="w-24 py-2 pr-2 font-medium sm:w-28">Type</th>
+              <th class="hidden py-2 pr-2 font-medium md:table-cell">Options</th>
+              <th class="hidden w-40 py-2 pr-2 font-medium sm:table-cell">Applies to</th>
+              <th class="hidden w-20 py-2 pr-2 font-medium sm:table-cell">Values</th>
+              <th class="w-16 py-2 pr-2"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (f of fields(); track f.id) {
+              @let t = fieldTypeOf(f.type);
+              <tr class="border-b border-ink/[0.06] last:border-0 hover:bg-white/50">
+                <td class="py-1.5 pl-3 pr-2">
+                  <div class="flex min-w-0 items-center gap-1.5">
+                    <span class="truncate font-semibold">{{ f.name }}</span>
+                    @if (f.required) {
+                      <span class="tag shrink-0 py-0 text-[10px] text-red-700">Required</span>
+                    }
+                  </div>
+                  <div class="truncate text-[11px] text-ink/70 sm:hidden">{{ f.productId ? productName(f.productId) : 'All products' }} · {{ fieldUsage()[f.id] }} value(s)</div>
+                </td>
+                <td class="py-1.5 pr-2"><span class="flex items-center gap-1 text-ink/70"><app-icon [name]="t.icon" [size]="12" />{{ t.label }}</span></td>
+                <td class="hidden py-1.5 pr-2 md:table-cell">
+                  <div class="flex flex-wrap gap-1">
+                    @for (o of f.options ?? []; track o) {
+                      <span class="tag py-0 text-[10.5px]">{{ o }}</span>
+                    } @empty {
+                      <span class="text-ink/70">—</span>
+                    }
+                  </div>
+                </td>
+                <td class="hidden truncate py-1.5 pr-2 sm:table-cell" [class.text-ink/70]="!f.productId">{{ f.productId ? productName(f.productId) : 'All products' }}</td>
+                <td class="hidden py-1.5 pr-2 tabular-nums sm:table-cell">{{ fieldUsage()[f.id] }} ticket{{ fieldUsage()[f.id] === 1 ? '' : 's' }}</td>
+                <td class="py-1.5 pr-2 text-right">
+                  <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-white hover:text-ink" [attr.aria-label]="'Edit ' + f.name" title="Edit" (click)="openField(f)"><app-icon name="pencil" [size]="13" /></button>
+                  <button type="button" class="rounded p-0.5 text-ink/70 hover:bg-red-50 hover:text-red-700" [attr.aria-label]="'Delete ' + f.name" title="Delete" (click)="deletingField.set(f)"><app-icon name="trash" [size]="13" /></button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-[11px] text-ink/70">Fields appear in the ticket create / edit dialog and on the ticket page of the products they apply to.</p>
+    }
+  }
+
+  <!-- New workflow -->
+  <app-modal [open]="newOpen()" heading="New workflow" (closed)="newOpen.set(false)">
+    <form id="wf-form" class="space-y-3" (submit)="$event.preventDefault(); createWorkflow()">
+      <div>
+        <label class="label" for="wf-name">Name</label>
+        <input id="wf-name" class="input" [value]="newName()" (input)="newName.set(val($event))" placeholder="e.g. Support workflow" autofocus />
+      </div>
+      <div>
+        <label class="label" for="wf-from">Start as a copy of</label>
+        <select id="wf-from" class="input" (change)="newFrom.set(val($event))">
+          @for (w of store.workflows(); track w.id) {
+            <option [value]="w.id" [selected]="w.id === newFrom()">{{ w.name }}</option>
+          }
+        </select>
+        <p class="mt-1 text-[11px] text-ink/70">Statuses and rules are copied; then edit them and assign the workflow to products.</p>
+      </div>
+    </form>
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="newOpen.set(false)">Cancel</button>
+      <button type="submit" form="wf-form" class="btn-primary"><app-icon name="copy" [size]="13" /> Create workflow</button>
+    </div>
+  </app-modal>
+
+  <!-- Delete status -->
+  <app-modal [open]="!!deletingStatus()" heading="Delete status?" (closed)="deletingStatus.set(undefined)">
+    @if (deletingStatus(); as s) {
+      @if (usage()[s.id]) {
+        <p class="mb-3 text-[13px] text-ink/70">
+          <strong class="text-ink">{{ usage()[s.id] }} ticket(s)</strong> are in <strong [style.color]="(s.color) | readable">{{ s.name }}</strong>. Choose where to move them:
+        </p>
+        <label class="label" for="rep-status">Move tickets to</label>
+        <select id="rep-status" class="input" (change)="replacementId.set(val($event))">
+          @for (o of workflow().statuses; track o.id) {
+            @if (o.id !== s.id) {
+              <option [value]="o.id" [selected]="o.id === replacementId()">{{ o.name }} ({{ categoryOf(o.category).label }})</option>
+            }
+          }
+        </select>
+      } @else {
+        <p class="text-[13px] text-ink/70"><strong [style.color]="(s.color) | readable">{{ s.name }}</strong> will be removed from {{ workflow().name }}. No tickets use it.</p>
+      }
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deletingStatus.set(undefined)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="confirmDeleteStatus()">Delete status</button>
+    </div>
+  </app-modal>
+
+  <!-- Delete workflow -->
+  <app-modal [open]="confirmDeleteWf()" heading="Delete workflow?" (closed)="confirmDeleteWf.set(false)">
+    <p class="text-[13px] text-ink/70"><strong class="text-ink">{{ workflow().name }}</strong> and its transition rules will be deleted. No product uses it.</p>
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="confirmDeleteWf.set(false)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="deleteWorkflow()">Delete workflow</button>
+    </div>
+  </app-modal>
+
+  <!-- Delete field -->
+  <app-modal [open]="!!deletingField()" heading="Delete custom field?" (closed)="deletingField.set(undefined)">
+    @if (deletingField(); as f) {
+      <p class="text-[13px] text-ink/70">
+        <strong class="text-ink">{{ f.name }}</strong> will be deleted{{ fieldUsage()[f.id] ? ' and its values removed from ' + fieldUsage()[f.id] + ' ticket(s)' : '' }}. This cannot be undone.
+      </p>
+    }
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deletingField.set(undefined)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="confirmDeleteField()">Delete field</button>
+    </div>
+  </app-modal>
+
+  <app-field-form [open]="fieldFormOpen()" [field]="editingField()" (closed)="fieldFormOpen.set(false)" (saved)="showToast($event)" />
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

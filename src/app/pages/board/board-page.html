@@ -1,0 +1,164 @@
+<div>
+  <app-page-header heading="Board" [sub]="total() + ' ticket' + (total() === 1 ? '' : 's')">
+    <button type="button" class="btn-primary" (click)="quickCreate(statuses()[0]?.id ?? '')"><app-icon name="plus" [size]="15" /> Create ticket</button>
+  </app-page-header>
+
+  <!-- Filters -->
+  <div class="glass mb-2.5 flex flex-wrap items-center gap-1.5 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+    <select class="input w-auto" aria-label="Product" (change)="setProduct(value($event))">
+      <option value="">All products</option>
+      @for (p of store.products(); track p.id) {
+        @if (!p.archived) {
+          <option [value]="p.id" [selected]="p.id === productFilter()">{{ p.name }}</option>
+        }
+      }
+    </select>
+    <select class="input w-auto" aria-label="Sprint" (change)="sprintFilter.set(value($event))">
+      <option value="active" [selected]="sprintFilter() === 'active'">Active sprints</option>
+      <option value="" [selected]="sprintFilter() === ''">All tickets</option>
+      <option value="backlog" [selected]="sprintFilter() === 'backlog'">Backlog (no sprint)</option>
+      @for (sp of sprintOptions(); track sp.id) {
+        <option [value]="sp.id" [selected]="sp.id === sprintFilter()">{{ sp.label }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Assignee" (change)="assigneeFilter.set(value($event))">
+      <option value="">Anyone</option>
+      <option value="me">Assigned to me</option>
+      <option value="none">Unassigned</option>
+      @for (u of store.users(); track u.id) {
+        <option [value]="u.id">{{ u.name }}</option>
+      }
+    </select>
+    <select class="input w-auto" aria-label="Type" (change)="typeFilter.set(value($event))">
+      <option value="">All types</option>
+      @for (t of types; track t.id) {
+        <option [value]="t.id">{{ t.label }}</option>
+      }
+    </select>
+    <label class="flex cursor-pointer items-center gap-1.5 px-1 text-[12px] text-ink/70">
+      <input type="checkbox" class="accent-brand" [checked]="hideEmpty()" (change)="hideEmpty.set($any($event.target).checked)" />
+      Hide empty columns
+    </label>
+    <div class="relative ml-auto min-w-[150px] flex-1 sm:max-w-64">
+      <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+      <input class="input pl-8" placeholder="Search cards" aria-label="Search cards by key or summary" [value]="query()" (input)="query.set($any($event.target).value)" />
+    </div>
+  </div>
+
+  <!--
+    Board: columns sit side by side and the page grows sideways if needed (browser scrollbar, no inner one).
+    Empty columns shrink to a slim strip; they widen while a card is being dragged so they are easy to drop on.
+  -->
+  <div class="flex flex-col gap-1.5 md:flex-row md:items-stretch" cdkDropListGroup>
+    @for (col of columns(); track col.status.id) {
+      @let collapsed = col.cards.length === 0 && !dragging();
+      <section
+        class="glass flex shrink-0 flex-col rounded-xl transition-[width,flex-basis] duration-200"
+        [class]="collapsed ? 'hidden md:flex md:w-9' : col.cards.length === 0 ? 'w-full md:w-32' : 'w-full md:w-auto md:min-w-[160px] md:max-w-[300px] md:flex-1 md:basis-0'"
+        [attr.aria-label]="col.status.name + ', ' + col.cards.length + ' tickets'"
+      >
+        @if (collapsed) {
+          <div class="flex flex-col items-center gap-2 py-2.5" [title]="col.status.name + ' (empty)'">
+            <span class="h-2 w-2 rounded-full" [style.background]="col.status.color"></span>
+            <span class="text-[11px] text-ink/70">0</span>
+            <span class="text-[11px] font-medium text-ink/70 [writing-mode:vertical-rl]">{{ col.status.name }}</span>
+          </div>
+        } @else {
+          <header class="flex items-center gap-1.5 border-b border-ink/10 px-2.5 py-2">
+            <span class="h-2 w-2 shrink-0 rounded-full" [style.background]="col.status.color"></span>
+            <h2 class="truncate text-[12px] font-semibold" [title]="col.status.name">{{ col.status.name }}</h2>
+            <span class="rounded-full bg-ink/5 px-1.5 text-[10.5px] tabular-nums text-ink/70">{{ col.cards.length }}</span>
+            <button
+              type="button"
+              class="ml-auto rounded p-0.5 text-ink/70 hover:bg-white hover:text-brand"
+              [attr.aria-label]="'Create a ticket in ' + col.status.name"
+              [title]="'Create a ticket in ' + col.status.name"
+              (click)="quickCreate(col.status.id)"
+            >
+              <app-icon name="plus" [size]="14" />
+            </button>
+          </header>
+        }
+
+        <div
+          class="flex min-h-16 flex-1 flex-col gap-1.5 p-1.5 md:min-h-[55vh]"
+          [class.px-1]="collapsed"
+          cdkDropList
+          [cdkDropListData]="col"
+          [id]="'col-' + col.status.id"
+          (cdkDropListDropped)="drop($event)"
+        >
+          @for (i of col.cards; track i.id) {
+            @let t = typeOf(i.type);
+            @let pr = priorityOf(i.priority);
+            @let n = countsOf(i);
+            <article
+              class="group cursor-grab rounded-lg border border-white bg-white/75 p-2 shadow-sm transition hover:bg-white hover:shadow-md active:cursor-grabbing"
+              cdkDrag
+              [cdkDragData]="i"
+              (cdkDragStarted)="dragStarted()"
+              (cdkDragEnded)="dragEnded()"
+              (click)="open(i)"
+              (keydown.enter)="open(i)"
+              tabindex="0"
+              [attr.aria-label]="i.key + ': ' + i.summary"
+            >
+              <div class="flex items-center gap-1.5">
+                <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded" [style.color]="(t.color) | readable" [style.background]="tint(t.color)" [title]="t.label">
+                  <app-icon [name]="t.icon" [size]="10" />
+                </span>
+                <span class="font-mono text-[10.5px] text-ink/70">{{ i.key }}</span>
+                <span class="ml-auto flex items-center" [style.color]="(pr.color) | readable" [title]="pr.label + ' priority'"><app-icon [name]="pr.icon" [size]="13" /></span>
+                <app-move-menu [label]="'Move ' + i.key" targetsLabel="Move to status" [targets]="moveTargets(i)" [current]="i.statusId" [canUp]="$index > 0" [canDown]="$index < col.cards.length - 1" (moved)="moveCard(i, col, $event)" />
+              </div>
+              <p class="mt-1 line-clamp-2 text-[12px] font-medium leading-snug group-hover:text-brand">{{ i.summary }}</p>
+              @if ((i.progress ?? 0) > 0) {
+                <div class="mt-1.5 h-1 overflow-hidden rounded-full bg-ink/10" [title]="i.progress + '% done'">
+                  <div class="h-full rounded-full bg-pastel-green" [style.width.%]="i.progress"></div>
+                </div>
+              }
+              <div class="mt-1.5 flex items-center gap-2 text-[10.5px] text-ink/70">
+                @if (i.dueDate) {
+                  <span class="flex items-center gap-0.5" [class.font-medium]="isOverdue(i, col.status)" [class.text-red-700]="isOverdue(i, col.status)" [title]="isOverdue(i, col.status) ? 'Overdue' : 'Due date'">
+                    <app-icon name="calendar-range" [size]="10" />{{ i.dueDate | date: 'MMM d' }}
+                  </span>
+                }
+                @if (n.children) {
+                  <span class="flex items-center gap-0.5" [title]="n.children + ' child ticket(s)'"><app-icon name="git-branch" [size]="10" />{{ n.children }}</span>
+                }
+                @if (n.files) {
+                  <span class="flex items-center gap-0.5" [title]="n.files + ' attachment(s)'"><app-icon name="paperclip" [size]="10" />{{ n.files }}</span>
+                }
+                @if (n.comments) {
+                  <span class="flex items-center gap-0.5" [title]="n.comments + ' comment(s)'"><app-icon name="message" [size]="10" />{{ n.comments }}</span>
+                }
+                <span class="ml-auto"><app-avatar [user]="store.userById(i.assigneeId)" size="sm" /></span>
+              </div>
+              <div *cdkDragPlaceholder class="h-16 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5"></div>
+            </article>
+          }
+        </div>
+      </section>
+    } @empty {
+      <div class="glass w-full rounded-xl p-8 text-center text-[13px] text-ink/70">No columns to show. Untick “Hide empty columns”.</div>
+    }
+  </div>
+
+  @if (total() === 0) {
+    <p class="mt-2 text-center text-[12px] text-ink/70">
+      No tickets match these filters{{ sprintFilter() === 'active' ? ' — try “All tickets” in the sprint filter' : '' }}.
+    </p>
+  }
+
+  <app-ticket-form
+    [open]="formOpen()"
+    [defaultProductId]="productFilter() || undefined"
+    [defaultStatusId]="newStatus()"
+    (closed)="formOpen.set(false)"
+    (saved)="showToast($event)"
+  />
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

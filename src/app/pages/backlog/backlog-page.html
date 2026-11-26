@@ -1,0 +1,346 @@
+<div class="mx-auto max-w-[1200px]">
+  <app-page-header heading="Backlog & Sprints">
+    @if (canRoadmaps()) {
+      <button type="button" class="btn-secondary" (click)="createRoadmap()" [disabled]="!productId()"><app-icon name="milestone" [size]="14" /> Create roadmap</button>
+    }
+    @if (canSprints()) {
+      <button type="button" class="btn-secondary" (click)="createSprint()" [disabled]="!productId()"><app-icon name="calendar-range" [size]="14" /> Create sprint</button>
+    }
+    <button type="button" class="btn-primary" (click)="createTicketIn('backlog')" [disabled]="!productId()"><app-icon name="plus" [size]="15" /> Create ticket</button>
+  </app-page-header>
+
+  <!-- Product + search + velocity -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+    <select class="input w-auto font-medium" aria-label="Product to plan" (change)="setProduct($any($event.target).value)">
+      @for (p of products(); track p.id) {
+        <option [value]="p.id" [selected]="p.id === productId()">{{ p.name }} ({{ p.key }})</option>
+      }
+    </select>
+    <span class="flex items-center gap-1.5 rounded-lg bg-white/60 px-2.5 py-1 text-[12px]" title="Average story points completed in the last 3 finished sprints">
+      <app-icon name="chart" [size]="13" class="text-brand" />
+      Velocity <strong class="tabular-nums">{{ velocity() ?? '—' }}</strong>{{ velocity() != null ? ' pts / sprint' : '' }}
+    </span>
+    <span class="text-[11px] text-ink/70">{{ canSprints() ? 'Drag tickets between sprints and the backlog, or up and down to set priority order.' : 'Sprint planning is done by tech leads, analysts and managers.' }}</span>
+    <div class="relative ml-auto min-w-[150px] flex-1 sm:max-w-60">
+      <app-icon name="search" [size]="14" class="absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-ink/70" />
+      <input class="input pl-8" placeholder="Filter tickets" aria-label="Filter tickets by key or summary" [value]="query()" (input)="query.set($any($event.target).value)" />
+    </div>
+  </div>
+
+  @if (!productId()) {
+    <div class="glass rounded-xl p-8 text-center text-[13px] text-ink/70">Create a product first to plan its sprints.</div>
+  } @else {
+    <!-- Roadmaps (each groups several sprints) -->
+    <section class="glass mb-3 rounded-xl" aria-labelledby="roadmaps-h">
+      <header class="flex items-center gap-2 px-3 py-2.5" [class.border-b]="showRoadmaps()" [class.border-ink/10]="showRoadmaps()">
+        <button type="button" class="flex items-center gap-1.5 text-left" [attr.aria-expanded]="showRoadmaps()" (click)="showRoadmaps.set(!showRoadmaps())">
+          <app-icon [name]="showRoadmaps() ? 'chevron-down' : 'chevron-right'" [size]="14" class="text-ink/70" />
+          <h2 id="roadmaps-h" class="flex items-center gap-1.5 text-[13px] font-semibold"><app-icon name="milestone" [size]="14" class="text-brand" /> Roadmaps</h2>
+        </button>
+        <span class="text-[11px] text-ink/70">{{ roadmapRows().length }}</span>
+        @if (canRoadmaps()) {
+          <button type="button" class="icon-btn ml-auto h-7 w-7" aria-label="Create roadmap" title="Create roadmap" (click)="createRoadmap()"><app-icon name="plus" [size]="15" /></button>
+        }
+      </header>
+      @if (showRoadmaps()) {
+        <div class="grid grid-cols-1 gap-2 p-2 lg:grid-cols-2">
+          @for (row of roadmapRows(); track row.roadmap.id) {
+            @let r = row.roadmap;
+            @let st = roadmapStatusOf(r.status);
+            <article class="rounded-xl border border-ink/10 bg-white/60 p-3">
+              <div class="flex items-start gap-2">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <h3 class="truncate text-[13px] font-semibold">{{ r.name }}</h3>
+                    <span class="pill py-0 text-[10.5px]" [style.color]="(st.color) | readable">{{ st.label }}</span>
+                    @if (row.overdue) {
+                      <span class="pill py-0 text-[10.5px] text-red-700">Overdue</span>
+                    }
+                  </div>
+                  <p class="text-[11px] text-ink/70">
+                    {{ r.startDate ? (r.startDate | date: 'MMM d, y') : 'No start' }} → {{ r.dueDate ? (r.dueDate | date: 'MMM d, y') : 'no due date' }}
+                    @if (r.completedAt) {
+                      · completed {{ r.completedAt | date: 'MMM d, y' }}
+                    }
+                  </p>
+                </div>
+                @if (canRoadmaps()) {
+                  <button type="button" class="icon-btn h-7 w-7" [attr.aria-label]="'Edit ' + r.name" title="Edit roadmap" (click)="editRoadmap(r)"><app-icon name="pencil" [size]="13" /></button>
+                  <button type="button" class="icon-btn h-7 w-7 hover:text-red-700" [attr.aria-label]="'Delete ' + r.name" title="Delete roadmap" (click)="deletingRoadmap.set(r)"><app-icon name="trash" [size]="13" /></button>
+                }
+              </div>
+              @if (r.description) {
+                <p class="mt-1 line-clamp-2 text-[12px] text-ink/70">{{ r.description }}</p>
+              }
+              <div class="mt-2 flex items-center gap-2 text-[11px]">
+                <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-ink/10"><span class="block h-full rounded-full bg-pastel-green" [style.width.%]="row.progress.pct"></span></span>
+                <span class="w-10 text-right font-semibold tabular-nums">{{ row.progress.pct }}%</span>
+              </div>
+              <p class="mt-0.5 text-[11px] text-ink/70">
+                {{ row.progress.points ? row.progress.donePoints + '/' + row.progress.points + ' pts' : row.progress.doneTickets + '/' + row.progress.tickets + ' tickets' }} done ·
+                {{ row.sprints.length }} sprint{{ row.sprints.length === 1 ? '' : 's' }}{{ row.sprints.length ? ': ' : '' }}
+                @for (sp of row.sprints; track sp.id; let last = $last) {
+                  <span [class.font-medium]="sp.state === 'active'">{{ sp.name }}</span>{{ last ? '' : ', ' }}
+                }
+              </p>
+              @if (r.achievedBenefits) {
+                <p class="mt-1.5 flex gap-1 rounded-md bg-pastel-green/10 px-2 py-1 text-[11px] text-ink/75"><app-icon name="trophy" [size]="12" class="mt-px shrink-0 text-pastel-green" /> {{ r.achievedBenefits }}</p>
+              }
+            </article>
+          } @empty {
+            <p class="col-span-full rounded-lg border border-dashed border-ink/15 px-3 py-3 text-center text-[12px] text-ink/70">
+              No roadmaps yet. A roadmap groups several sprints toward one goal — create one, then assign sprints to it.
+            </p>
+          }
+        </div>
+      }
+    </section>
+
+    <div class="space-y-3" cdkDropListGroup>
+      @for (sec of sections(); track sec.id) {
+        @let sp = sec.sprint;
+        @let expanded = !collapsed().has(sec.id);
+        <section class="glass rounded-xl" [class.ring-2]="sp?.state === 'active'" [class.ring-brand/40]="sp?.state === 'active'" [attr.aria-label]="sp?.name ?? 'Backlog'">
+          <!-- Section header -->
+          <header class="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5" [class.border-b]="expanded" [class.border-ink/10]="expanded">
+            <button type="button" class="flex items-center gap-1.5 text-left" [attr.aria-expanded]="expanded" (click)="toggle(sec.id)">
+              <app-icon [name]="expanded ? 'chevron-down' : 'chevron-right'" [size]="14" class="text-ink/70" />
+              <h2 class="text-[13px] font-semibold">{{ sp?.name ?? 'Backlog' }}</h2>
+            </button>
+            @if (sp) {
+              @if (roadmapName(sp.roadmapId); as rn) {
+                <span class="tag py-0" title="Roadmap"><app-icon name="milestone" [size]="11" /> {{ rn }}</span>
+              }
+              @if (sp.state === 'active') {
+                <span class="pill text-pastel-green">Active</span>
+              } @else {
+                <span class="pill text-ink/70">Planned</span>
+              }
+              <span class="text-[11px] text-ink/70">
+                {{ sp.startDate ? (sp.startDate | date: 'MMM d') : 'No start' }} – {{ sp.endDate ? (sp.endDate | date: 'MMM d') : 'no end' }}
+                @if (sp.state === 'active' && daysLeft(sp) !== undefined) {
+                  · <span [class.text-red-700]="daysLeft(sp)! < 0" [class.font-medium]="daysLeft(sp)! < 0">{{ daysLeft(sp)! < 0 ? -daysLeft(sp)! + ' days overdue' : daysLeft(sp) + ' days left' }}</span>
+                }
+              </span>
+            }
+            <span class="text-[11px] text-ink/70">
+              {{ sec.stats.total }} ticket{{ sec.stats.total === 1 ? '' : 's' }} ·
+              <strong class="text-ink/80">{{ sec.stats.points }}</strong> pts
+              @if (sec.stats.unestimated) {
+                · <span class="text-pastel-yellow" title="Tickets without story points">{{ sec.stats.unestimated }} unestimated</span>
+              }
+            </span>
+            @if (sp && sp.state === 'active') {
+              <span class="flex items-center gap-1.5 text-[11px] text-ink/70" title="Story points done">
+                <span class="h-1.5 w-20 overflow-hidden rounded-full bg-ink/10">
+                  <span class="block h-full rounded-full bg-pastel-green" [style.width.%]="sec.stats.points ? (sec.stats.donePoints / sec.stats.points) * 100 : 0"></span>
+                </span>
+                {{ sec.stats.donePoints }}/{{ sec.stats.points }} pts done
+              </span>
+            }
+            @if (sp && sp.state === 'planned' && velocity() != null && sec.stats.points > velocity()!) {
+              <span class="text-[11px] text-pastel-coral" title="More points than the team usually completes">Over velocity</span>
+            }
+
+            <div class="ml-auto flex items-center gap-1">
+              @if (sp?.state === 'active' && canSprints()) {
+                <button type="button" class="btn-primary px-2.5 py-1 text-[12px]" (click)="askComplete(sp!)">Complete sprint</button>
+              }
+              @if (sp?.state === 'planned' && canSprints()) {
+                <button type="button" class="btn-secondary px-2.5 py-1 text-[12px]" [disabled]="!!activeSprint()" [title]="activeSprint() ? 'Complete ' + activeSprint()!.name + ' first' : 'Start this sprint'" (click)="startSprint(sp!)">
+                  <app-icon name="play" [size]="11" /> Start sprint
+                </button>
+              }
+              <button type="button" class="icon-btn h-7 w-7" [attr.aria-label]="'Create a ticket in ' + (sp?.name ?? 'the backlog')" [title]="'Create a ticket in ' + (sp?.name ?? 'the backlog')" (click)="createTicketIn(sec.id)">
+                <app-icon name="plus" [size]="15" />
+              </button>
+              @if (sp && canSprints()) {
+                <button type="button" class="icon-btn h-7 w-7" [attr.aria-label]="'Edit ' + sp.name" title="Edit sprint" (click)="editSprint(sp)"><app-icon name="pencil" [size]="13" /></button>
+                @if (sp.state === 'planned') {
+                  <button type="button" class="icon-btn h-7 w-7 hover:text-red-700" [attr.aria-label]="'Delete ' + sp.name" title="Delete sprint" (click)="deletingSprint.set(sp)"><app-icon name="trash" [size]="13" /></button>
+                }
+              }
+            </div>
+            @if (sp?.goal && expanded) {
+              <p class="w-full pl-5 text-[12px] text-ink/70"><span class="text-ink/70">Goal:</span> {{ sp!.goal }}</p>
+            }
+          </header>
+
+          <!-- Rows (kept in the DOM when collapsed so it stays a drop target) -->
+          <div
+            class="min-h-10 p-1.5"
+            [class.hidden]="!expanded"
+            cdkDropList
+            [cdkDropListData]="sec"
+            (cdkDropListDropped)="drop($event)"
+          >
+            @for (i of sec.issues; track i.id) {
+              @let t = typeOf(i.type);
+              @let pr = priorityOf(i.priority);
+              @let st = statusOf(i);
+              <div
+                class="group flex cursor-grab items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] transition hover:bg-white/70 active:cursor-grabbing"
+                [class.muted-row]="isDone(i)"
+                cdkDrag
+                [cdkDragDisabled]="!canSprints()"
+                [class.!cursor-default]="!canSprints()"
+                [cdkDragData]="i"
+                (cdkDragEnded)="dragEnded()"
+              >
+                <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded" [style.color]="(t.color) | readable" [style.background]="tint(t.color)" [title]="t.label">
+                  <app-icon [name]="t.icon" [size]="11" />
+                </span>
+                <span class="w-14 shrink-0 font-mono text-[11px] text-ink/70">{{ i.key }}</span>
+                <button type="button" class="min-w-0 flex-1 truncate text-left font-medium hover:text-brand" [class.line-through]="isDone(i)" [title]="i.summary" (click)="open(i)">{{ i.summary }}</button>
+                <span class="hidden shrink-0 sm:inline" [style.color]="(pr.color) | readable" [title]="pr.label + ' priority'"><app-icon [name]="pr.icon" [size]="14" /></span>
+                <span class="pill hidden max-w-36 truncate py-0 text-[10.5px] md:inline-flex" [style.color]="(st?.color) | readable">{{ st?.name }}</span>
+                @if (editingPoints() === i.id) {
+                  <input
+                    #pts
+                    class="input w-14 shrink-0 px-1.5 py-0.5 text-center text-[12px]"
+                    type="number"
+                    min="0"
+                    [value]="i.storyPoints ?? ''"
+                    aria-label="Story points"
+                    (keydown.enter)="savePoints(i, pts.value)"
+                    (keydown.escape)="editingPoints.set(null)"
+                    (blur)="savePoints(i, pts.value)"
+                    (mousedown)="$event.stopPropagation()"
+                  />
+                } @else {
+                  <button
+                    type="button"
+                    class="w-9 shrink-0 rounded-full border px-1.5 text-center text-[11px] font-semibold tabular-nums transition hover:border-brand hover:text-brand"
+                    [class]="i.storyPoints == null ? 'border-dashed border-ink/25 text-ink/70' : 'border-ink/10 bg-white/80 text-ink/75'"
+                    [title]="i.storyPoints == null ? 'Set story points' : i.storyPoints + ' story points — click to change'"
+                    (click)="editingPoints.set(i.id)"
+                  >
+                    {{ i.storyPoints ?? '–' }}
+                  </button>
+                }
+                <app-avatar [user]="store.userById(i.assigneeId)" size="sm" />
+                @if (canSprints()) {
+                  <app-move-menu [label]="'Move ' + i.key" targetsLabel="Move to" [targets]="moveTargets()" [current]="sec.id" [canUp]="$index > 0" [canDown]="$index < sec.issues.length - 1" (moved)="moveRow(i, sec, $event)" />
+                }
+                <div *cdkDragPlaceholder class="h-8 rounded-lg border-2 border-dashed border-brand/40 bg-brand/5"></div>
+              </div>
+            } @empty {
+              <p class="rounded-lg border border-dashed border-ink/15 px-3 py-2.5 text-center text-[12px] text-ink/70">
+                {{ query() ? 'No tickets match the filter.' : sp ? (canSprints() ? 'Drag tickets here from the backlog to plan this sprint.' : 'No tickets planned yet.') : 'The backlog is empty.' }}
+              </p>
+            }
+          </div>
+        </section>
+      }
+    </div>
+
+    <!-- Completed sprints -->
+    @if (completedSprints().length) {
+      <section class="glass mt-3 rounded-xl">
+        <button type="button" class="flex w-full items-center gap-1.5 px-3 py-2.5 text-left" [attr.aria-expanded]="showCompleted()" (click)="showCompleted.set(!showCompleted())">
+          <app-icon [name]="showCompleted() ? 'chevron-down' : 'chevron-right'" [size]="14" class="text-ink/70" />
+          <h2 class="text-[13px] font-semibold">Completed sprints</h2>
+          <span class="text-[11px] text-ink/70">{{ completedSprints().length }}</span>
+        </button>
+        @if (showCompleted()) {
+          <table class="w-full border-t border-ink/10 text-[12px]">
+            <thead class="text-left text-[11px] text-ink/70">
+              <tr>
+                <th class="px-3 py-1.5 font-medium">Sprint</th>
+                <th class="hidden px-3 py-1.5 font-medium sm:table-cell">Dates</th>
+                <th class="px-3 py-1.5 font-medium">Committed</th>
+                <th class="px-3 py-1.5 font-medium">Completed</th>
+                <th class="hidden px-3 py-1.5 font-medium md:table-cell">Goal</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (c of completedSprints(); track c.id) {
+                <tr class="border-t border-ink/[0.06]">
+                  <td class="px-3 py-1.5 font-medium">{{ c.name }}</td>
+                  <td class="hidden px-3 py-1.5 text-ink/70 sm:table-cell">{{ c.startDate | date: 'MMM d' }} – {{ c.endDate | date: 'MMM d, y' }}</td>
+                  <td class="px-3 py-1.5 tabular-nums">{{ c.committedPoints ?? '—' }} pts</td>
+                  <td class="px-3 py-1.5 tabular-nums">
+                    {{ c.completedPoints ?? '—' }} pts
+                    @if (c.committedPoints) {
+                      <span class="text-ink/70">({{ ((c.completedPoints ?? 0) / c.committedPoints) * 100 | number: '1.0-0' }}%)</span>
+                    }
+                  </td>
+                  <td class="hidden truncate px-3 py-1.5 text-ink/70 md:table-cell">{{ c.goal ?? '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </section>
+    }
+
+    <app-roadmap-form [open]="roadmapFormOpen()" [productId]="productId()" [roadmap]="editingRoadmap()" (closed)="roadmapFormOpen.set(false)" (saved)="showToast($event)" />
+
+    <app-modal [open]="!!deletingRoadmap()" heading="Delete roadmap?" (closed)="deletingRoadmap.set(undefined)">
+      <p class="text-[13px] text-ink/70">
+        <strong class="text-ink">{{ deletingRoadmap()?.name }}</strong> will be deleted. Its sprints and tickets are kept — they just won't belong to a roadmap any more.
+      </p>
+      <div footer class="contents">
+        <button type="button" class="btn-secondary" (click)="deletingRoadmap.set(undefined)">Cancel</button>
+        <button type="button" class="btn-danger" (click)="confirmDeleteRoadmap()">Delete roadmap</button>
+      </div>
+    </app-modal>
+
+    <app-sprint-form [open]="sprintFormOpen()" [productId]="productId()" [sprint]="editingSprint()" (closed)="sprintFormOpen.set(false)" (saved)="showToast($event)" />
+
+    <app-ticket-form
+      [open]="ticketFormOpen()"
+      [defaultProductId]="productId()"
+      [defaultSprintId]="newTicketSprint()"
+      (closed)="ticketFormOpen.set(false)"
+      (saved)="showToast($event)"
+    />
+
+    <!-- Complete sprint -->
+    <app-modal [open]="!!completing()" [heading]="'Complete ' + (completing()?.name ?? '')" (closed)="completing.set(undefined)">
+      @if (completing(); as sp) {
+        @let st = store.sprintStats(productId(), sp.id);
+        <div class="space-y-3 text-[13px]">
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="rounded-lg bg-white/70 p-2"><div class="text-lg font-semibold tabular-nums text-pastel-green">{{ st.done }}</div><div class="text-[11px] text-ink/70">done</div></div>
+            <div class="rounded-lg bg-white/70 p-2"><div class="text-lg font-semibold tabular-nums">{{ st.total - st.done }}</div><div class="text-[11px] text-ink/70">unfinished</div></div>
+            <div class="rounded-lg bg-white/70 p-2"><div class="text-lg font-semibold tabular-nums">{{ st.donePoints }}/{{ st.points }}</div><div class="text-[11px] text-ink/70">points done</div></div>
+          </div>
+          @if (st.total - st.done > 0) {
+            <div>
+              <label class="label" for="cs-target">Move unfinished tickets to</label>
+              <select id="cs-target" class="input" (change)="completeTarget.set($any($event.target).value)">
+                <option value="backlog" [selected]="completeTarget() === 'backlog'">Backlog</option>
+                @for (p of plannedSprints(); track p.id) {
+                  <option [value]="p.id" [selected]="completeTarget() === p.id">{{ p.name }}</option>
+                }
+              </select>
+            </div>
+          } @else {
+            <p class="text-ink/70">Every ticket in this sprint is done. 🎉</p>
+          }
+          <p class="text-[12px] text-ink/70">Finished tickets stay with this sprint for reports. The sprint moves to “Completed sprints”.</p>
+        </div>
+      }
+      <div footer class="contents">
+        <button type="button" class="btn-secondary" (click)="completing.set(undefined)">Cancel</button>
+        <button type="button" class="btn-primary" (click)="confirmComplete()">Complete sprint</button>
+      </div>
+    </app-modal>
+
+    <!-- Delete planned sprint -->
+    <app-modal [open]="!!deletingSprint()" heading="Delete sprint?" (closed)="deletingSprint.set(undefined)">
+      <p class="text-[13px] text-ink/70">
+        <strong class="text-ink">{{ deletingSprint()?.name }}</strong> will be deleted. Its tickets are not deleted — they go back to the backlog.
+      </p>
+      <div footer class="contents">
+        <button type="button" class="btn-secondary" (click)="deletingSprint.set(undefined)">Cancel</button>
+        <button type="button" class="btn-danger" (click)="confirmDeleteSprint()">Delete sprint</button>
+      </div>
+    </app-modal>
+  }
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

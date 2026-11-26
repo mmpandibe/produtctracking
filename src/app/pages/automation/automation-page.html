@@ -1,0 +1,170 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Automation" sub="When something happens, if it matches, do this">
+    @if (canCreate()) {
+      <button type="button" class="btn-primary" (click)="openNew()"><app-icon name="plus" [size]="14" />New rule</button>
+    }
+  </app-page-header>
+
+  <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Rules</div><div class="text-[20px] font-semibold tabular-nums">{{ stats().total }}</div></div>
+    <div class="glass rounded-xl px-3 py-2"><div class="text-[11px] text-ink/70">Turned on</div><div class="text-[20px] font-semibold tabular-nums text-emerald-700">{{ stats().enabled }}</div></div>
+    <button type="button" class="glass rounded-xl px-3 py-2 text-left hover:bg-white/70" (click)="logRule.set(''); tab.set('log')"><div class="text-[11px] text-ink/70">Runs · last 24 h</div><div class="text-[20px] font-semibold tabular-nums">{{ stats().runs24h }}</div></button>
+    <button type="button" class="glass rounded-xl px-3 py-2 text-left hover:bg-white/70" (click)="logRule.set(''); tab.set('log')"><div class="text-[11px] text-ink/70">Runs with skipped actions</div><div class="text-[20px] font-semibold tabular-nums" [class.text-amber-800]="stats().problems">{{ stats().problems }}</div></button>
+  </div>
+
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2">
+    <div class="flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'rules' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'rules'" (click)="tab.set('rules')">Rules</button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'log' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'log'" (click)="tab.set('log')">Run log</button>
+    </div>
+    @if (tab() === 'rules') {
+      <select class="input w-auto py-1 text-[12px]" aria-label="Filter by product" (change)="productFilter.set($any($event.target).value)">
+        <option value="">Every rule</option>
+        <option value="all" [selected]="productFilter() === 'all'">All-product rules</option>
+        @for (p of store.products(); track p.id) {
+          <option [value]="p.id" [selected]="p.id === productFilter()">{{ p.name }}</option>
+        }
+      </select>
+    } @else {
+      <select class="input w-auto py-1 text-[12px]" aria-label="Filter by rule" (change)="logRule.set($any($event.target).value)">
+        <option value="">All rules</option>
+        @for (r of store.automations(); track r.id) {
+          <option [value]="r.id" [selected]="r.id === logRule()">{{ r.name }}</option>
+        }
+      </select>
+      @if (store.currentUser().role === 'admin' && store.automationLog().length) {
+        <button type="button" class="btn-secondary ml-auto px-2 py-0.5 text-[11px]" (click)="store.clearAutomationLog(); showToast('Run log cleared')">Clear log</button>
+      }
+    }
+  </div>
+
+  @if (tab() === 'rules') {
+    @if (!rules().length) {
+      <div class="glass mb-3 rounded-xl p-8 text-center">
+        <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80 text-ink/70"><app-icon name="zap" [size]="18" /></div>
+        <p class="text-[13px] font-medium">No rules here yet</p>
+        <p class="text-[12px] text-ink/70">Start from a template below or create your own.</p>
+      </div>
+    } @else {
+      <ul class="mb-3 space-y-2">
+        @for (r of rules(); track r.id) {
+          <li class="glass rounded-xl p-2.5" [class.muted-row]="!r.enabled">
+            <div class="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <button
+                type="button"
+                role="switch"
+                class="relative h-[24px] w-[42px] shrink-0 rounded-full transition-colors"
+                [class]="r.enabled ? 'bg-emerald-600' : 'bg-ink/20'"
+                [attr.aria-checked]="r.enabled"
+                [attr.aria-label]="(r.enabled ? 'Turn off ' : 'Turn on ') + r.name"
+                [disabled]="!canManage(r)"
+                (click)="toggle(r)"
+              >
+                <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" [class]="r.enabled ? 'left-[18px]' : 'left-0.5'"></span>
+              </button>
+              <h2 class="min-w-0 truncate text-[13px] font-semibold">{{ r.name }}</h2>
+              <span class="tag flex items-center gap-1 text-[10px]">
+                @if (productColor(r.productId); as c) {
+                  <span class="h-1.5 w-1.5 rounded-full" [style.background]="c"></span>
+                }
+                {{ productName(r.productId) }}
+              </span>
+              <span class="ml-auto flex items-center gap-1 text-[11px] text-ink/70">
+                @if (r.runCount) {
+                  <button type="button" class="hover:text-brand hover:underline" (click)="showLog(r)">{{ r.runCount }} run{{ r.runCount === 1 ? '' : 's' }}{{ r.lastRunAt ? ' · last ' + (r.lastRunAt | date: 'MMM d, HH:mm') : '' }}</button>
+                } @else {
+                  <span>Never run</span>
+                }
+                @if (canManage(r)) {
+                  <button type="button" class="icon-btn ml-1" aria-label="Edit rule" title="Edit" (click)="edit(r)"><app-icon name="pencil" [size]="13" /></button>
+                  <button type="button" class="icon-btn" aria-label="Duplicate rule" title="Duplicate" (click)="duplicate(r)"><app-icon name="copy" [size]="13" /></button>
+                  <button type="button" class="icon-btn hover:text-red-700" aria-label="Delete rule" title="Delete" (click)="deleting.set(r)"><app-icon name="trash" [size]="13" /></button>
+                }
+              </span>
+            </div>
+            <div class="grid grid-cols-1 gap-1.5 text-[12px] md:grid-cols-3">
+              <div class="rounded-lg bg-white/55 px-2 py-1.5">
+                <div class="mb-0.5 text-[10px] font-semibold text-brand">WHEN</div>
+                <div>{{ when(r) }}</div>
+                @if (triggerOf(r.trigger.type).timed) {
+                  <div class="text-[10px] text-ink/70">checked every minute · once per ticket</div>
+                }
+              </div>
+              <div class="rounded-lg bg-white/55 px-2 py-1.5">
+                <div class="mb-0.5 text-[10px] font-semibold text-amber-800">IF</div>
+                @for (c of ifs(r); track $index) {
+                  <div>{{ c }}</div>
+                } @empty {
+                  <div class="text-ink/70">Any ticket</div>
+                }
+              </div>
+              <div class="rounded-lg bg-white/55 px-2 py-1.5">
+                <div class="mb-0.5 text-[10px] font-semibold text-emerald-700">THEN</div>
+                @for (a of thens(r); track $index) {
+                  <div>{{ $index + 1 }}. {{ a }}</div>
+                }
+              </div>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+
+    @if (canCreate()) {
+      <h2 class="section-title mb-2">Templates</h2>
+      <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        @for (t of templates; track t.key) {
+          <button type="button" class="glass rounded-xl p-2.5 text-left hover:bg-white/70" (click)="useTemplate(t)">
+            <div class="mb-0.5 flex items-center gap-1.5 text-[12px] font-semibold"><app-icon name="zap" [size]="12" class="text-brand" />{{ t.rule.name }}</div>
+            <div class="text-[11px] text-ink/70">{{ t.blurb }}</div>
+          </button>
+        }
+      </div>
+    }
+    <p class="mt-3 text-[11px] text-ink/70">
+      Rules act as “Automation” in ticket history. A rule can set off other rules (up to 5 deep) but never itself in the same chain.
+      Set-status actions follow the workflow's transition rules.
+    </p>
+  } @else {
+    @if (!log().length) {
+      <div class="glass rounded-xl p-8 text-center text-[12px] text-ink/70">No runs yet. Runs appear here as soon as a rule fires.</div>
+    } @else {
+      <ul class="glass divide-y divide-ink/[0.06] rounded-xl">
+        @for (run of log(); track run.id) {
+          @let o = outcome[run.outcome];
+          <li class="flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2">
+            <span class="w-24 shrink-0 text-[11px] tabular-nums text-ink/70">{{ run.at | date: 'MMM d, HH:mm:ss' }}</span>
+            <div class="min-w-0 flex-1 basis-60">
+              <div class="text-[12px]">
+                <span class="font-medium">{{ run.ruleName }}</span>
+                <span class="text-ink/70"> on </span>
+                <a [routerLink]="['/tickets', run.issueKey]" class="font-mono text-[11px] text-brand hover:underline">{{ run.issueKey }}</a>
+                <span class="text-[11px] text-ink/70"> · {{ triggerOf(run.trigger).label.toLowerCase() }}</span>
+              </div>
+              <ul class="text-[11px] text-ink/70">
+                @for (d of run.details; track $index) {
+                  <li [class.text-amber-800]="d.startsWith('Skipped')">{{ d }}</li>
+                }
+              </ul>
+            </div>
+            <span class="pill py-0 text-[10px]" [style.color]="(o.color) | readable">{{ o.label }}</span>
+          </li>
+        }
+      </ul>
+    }
+  }
+
+  <app-rule-form [open]="formOpen()" [rule]="editing()" [draft]="draft()" (closed)="formOpen.set(false)" (saved)="saved($event)" />
+
+  <app-modal [open]="!!deleting()" heading="Delete rule" (closed)="deleting.set(undefined)">
+    <p class="text-[13px] text-ink/70">Delete <strong class="text-ink">{{ deleting()?.name }}</strong>? Its past runs stay in the log. To pause it instead, turn it off.</p>
+    <div footer class="contents">
+      <button type="button" class="btn-secondary" (click)="deleting.set(undefined)">Cancel</button>
+      <button type="button" class="btn-danger" (click)="confirmDelete()">Delete</button>
+    </div>
+  </app-modal>
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>

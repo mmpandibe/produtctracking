@@ -1,0 +1,220 @@
+<div class="mx-auto max-w-[1300px]">
+  <app-page-header heading="Time Tracking">
+    @if (!isTeam()) {
+      <button type="button" class="btn-primary" (click)="logTime()"><app-icon name="plus" [size]="15" /> Log time</button>
+    }
+  </app-page-header>
+
+  <!-- Week + person -->
+  <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+    <div class="flex items-center gap-1">
+      <button type="button" class="icon-btn h-8 w-8" aria-label="Previous week" (click)="shiftWeek(-1)"><app-icon name="chevron-left" [size]="16" /></button>
+      <span class="min-w-[170px] text-center text-[13px] font-semibold tabular-nums">{{ days()[0] | date: 'MMM d' }} – {{ days()[6] | date: 'MMM d, y' }}</span>
+      <button type="button" class="icon-btn h-8 w-8" aria-label="Next week" (click)="shiftWeek(1)"><app-icon name="chevron-right" [size]="16" /></button>
+      @if (!isThisWeek()) {
+        <button type="button" class="ml-1 text-[12px] text-brand hover:underline" (click)="thisWeek()">This week</button>
+      }
+    </div>
+    <select class="input w-auto" aria-label="Person" (change)="setPerson($any($event.target).value)">
+      @for (u of people(); track u.id) {
+        <option [value]="u.id" [selected]="u.id === person()">{{ u.name }}{{ u.id === store.currentUser().id ? ' (me)' : '' }}</option>
+      }
+      @if (people().length > 1) {
+        <option value="all" [selected]="isTeam()">Everyone (team view)</option>
+      }
+    </select>
+    <div class="ml-auto flex rounded-lg border border-ink/10 bg-white/60 p-0.5 text-[12px]" role="tablist">
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'sheet' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'sheet'" (click)="tab.set('sheet')">Timesheet</button>
+      <button type="button" role="tab" class="rounded-md px-3 py-1" [class]="tab() === 'list' ? 'bg-white font-medium text-brand shadow-sm' : 'text-ink/70'" [attr.aria-selected]="tab() === 'list'" (click)="tab.set('list')">Entries ({{ logs().length }})</button>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+    <div class="glass rounded-xl p-3.5">
+      <div class="section-title">Logged this week{{ isTeam() ? ' · team' : '' }}</div>
+      <div class="mt-1 flex items-baseline gap-2">
+        <span class="text-2xl font-semibold tabular-nums">{{ fmt(weekTotal()) }}</span>
+        <span class="text-[12px] text-ink/70">of {{ fmt(target()) }} target</span>
+      </div>
+      <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10">
+        <div class="h-full rounded-full" [class]="targetPct() >= 100 ? 'bg-pastel-green' : 'bg-brand'" [style.width.%]="targetPct() > 100 ? 100 : targetPct()"></div>
+      </div>
+      <div class="mt-1 text-[11px] text-ink/70">{{ targetPct() }}% of target</div>
+    </div>
+    <div class="glass rounded-xl p-3.5">
+      <div class="section-title mb-2">By activity</div>
+      <ul class="space-y-1.5">
+        @for (a of byActivity(); track a.id) {
+          <li class="text-[12px]">
+            <div class="flex justify-between"><span>{{ a.label }}</span><span class="tabular-nums text-ink/70">{{ a.minutes ? fmt(a.minutes) : '—' }}</span></div>
+            <div class="mt-0.5 h-1 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full" [style.background]="a.color" [style.width.%]="a.pct"></div></div>
+          </li>
+        }
+      </ul>
+    </div>
+    <div class="glass rounded-xl p-3.5">
+      <div class="section-title mb-2">By product</div>
+      <ul class="space-y-1.5">
+        @for (p of byProduct(); track p.product.id) {
+          <li class="text-[12px]">
+            <div class="flex justify-between"><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full" [style.background]="p.product.color"></span>{{ p.product.name }}</span><span class="tabular-nums text-ink/70">{{ fmt(p.minutes) }}</span></div>
+            <div class="mt-0.5 h-1 overflow-hidden rounded-full bg-ink/10"><div class="h-full rounded-full" [style.background]="p.product.color" [style.width.%]="p.pct"></div></div>
+          </li>
+        } @empty {
+          <li class="text-[12px] text-ink/70">No time logged this week.</li>
+        }
+      </ul>
+    </div>
+  </div>
+
+  @if (tab() === 'sheet') {
+    <!-- Timesheet grid -->
+    <div class="glass overflow-hidden rounded-xl">
+      <table class="w-full table-fixed text-[12px]">
+        <thead class="bg-white/40 text-[11px] text-ink/70">
+          <tr class="border-b border-ink/10">
+            <th class="py-2 pl-2 pr-1 text-left font-medium sm:pl-3 sm:pr-2">{{ isTeam() ? 'Person' : 'Ticket' }}</th>
+            @for (d of days(); track $index; let i = $index) {
+              <th class="w-8 py-2 text-center font-medium sm:w-16" [class.text-brand]="dayKeys()[i] === todayKey" [class.text-ink/70]="isWeekend(i) && dayKeys()[i] !== todayKey">
+                <div>{{ d | date: 'EEE' }}</div>
+                <div class="text-[10px] font-normal">{{ d | date: 'd' }}</div>
+              </th>
+            }
+            <th class="w-12 py-2 pr-2 text-right font-medium sm:w-20 sm:pr-3">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (isTeam()) {
+            @for (r of personRows(); track r.user.id) {
+              <tr class="border-b border-ink/[0.06] hover:bg-white/50">
+                <td class="py-1.5 pl-3 pr-2">
+                  <button type="button" class="flex min-w-0 items-center gap-2 text-left hover:text-brand" [title]="'Open ' + r.user.name + '’s timesheet'" (click)="setPerson(r.user.id)">
+                    <app-avatar [user]="r.user" size="sm" /><span class="hidden truncate font-medium sm:inline">{{ r.user.name }}</span>
+                  </button>
+                </td>
+                @for (m of r.perDay; track $index; let i = $index) {
+                  <td class="py-1.5 text-center tabular-nums" [class.bg-brand/5]="dayKeys()[i] === todayKey" [class.text-ink/70]="!m">{{ hrs(m) || '·' }}</td>
+                }
+                <td class="py-1.5 pr-3 text-right font-semibold tabular-nums" [class.text-red-700]="r.total > 0 && r.total < 8 * 60" [title]="r.total < 8 * 60 && r.total > 0 ? 'Less than a day logged this week' : ''">{{ r.total ? fmt(r.total) : '—' }}</td>
+              </tr>
+            }
+          } @else {
+            @for (r of ticketRows(); track r.issue.id) {
+              @let t = typeOf(r.issue.type);
+              <tr class="border-b border-ink/[0.06] hover:bg-white/50">
+                <td class="py-1 pl-3 pr-2">
+                  <div class="flex min-w-0 items-center gap-1.5">
+                    <span class="hidden h-5 w-5 shrink-0 items-center justify-center rounded sm:flex" [style.color]="(t.color) | readable" [style.background]="tint(t.color)"><app-icon [name]="t.icon" [size]="11" /></span>
+                    <a class="shrink-0 font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', r.issue.key]">{{ r.issue.key }}</a>
+                    <span class="hidden truncate sm:inline" [title]="r.issue.summary">{{ r.issue.summary }}</span>
+                  </div>
+                </td>
+                @for (m of r.perDay; track $index; let i = $index) {
+                  <td class="p-0.5 text-center" [class.bg-brand/5]="dayKeys()[i] === todayKey">
+                    <button
+                      type="button"
+                      class="h-7 w-full rounded-md tabular-nums transition hover:bg-white hover:ring-1 hover:ring-brand/40"
+                      [class]="m ? 'font-medium text-ink' : 'text-ink/25'"
+                      [disabled]="dayKeys()[i] > todayKey"
+                      [attr.aria-label]="'Log time on ' + r.issue.key + ', ' + (days()[i] | date: 'EEEE d MMM') + (m ? ', ' + fmt(m) + ' logged' : '')"
+                      (click)="openCell(r.issue.id, i)"
+                    >
+                      {{ hrs(m) || (dayKeys()[i] > todayKey ? '' : '+') }}
+                    </button>
+                  </td>
+                }
+                <td class="py-1 pr-3 text-right font-semibold tabular-nums">{{ r.total ? fmt(r.total) : '—' }}</td>
+              </tr>
+            } @empty {
+              <tr><td [attr.colspan]="9" class="px-3 py-6 text-center text-[12px] text-ink/70">No time logged this week. Add a ticket below or use “Log time”.</td></tr>
+            }
+          }
+        </tbody>
+        <tfoot>
+          <tr class="border-t border-ink/10 bg-white/40 font-semibold">
+            <td class="py-2 pl-3 pr-2 text-[11px] uppercase tracking-wide text-ink/70">Day total</td>
+            @for (m of dayTotals(); track $index; let i = $index) {
+              <td class="py-2 text-center tabular-nums" [class.text-brand]="dayKeys()[i] === todayKey" [class.text-ink/70]="!m">{{ hrs(m) || '·' }}</td>
+            }
+            <td class="py-2 pr-3 text-right tabular-nums">{{ fmt(weekTotal()) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+      @if (!isTeam()) {
+        <div class="flex items-center gap-2 border-t border-ink/10 px-3 py-2 [&_.input]:py-1 [&_.input]:text-[12px]">
+          <app-icon name="plus" [size]="14" class="text-ink/70" />
+          <select class="input max-w-md" aria-label="Add a ticket to this week's timesheet" (change)="addRow($any($event.target).value); $any($event.target).value = ''">
+            <option value="">Add a ticket to the sheet…</option>
+            @for (i of addable(); track i.id) {
+              <option [value]="i.id">{{ i.key }} · {{ i.summary }}{{ i.assigneeId === person() ? ' (assigned)' : '' }}</option>
+            }
+          </select>
+          <span class="hidden text-[11px] text-ink/70 sm:inline">Click a cell to log hours for that day.</span>
+        </div>
+      }
+    </div>
+  } @else {
+    <!-- Entry list -->
+    <div class="glass overflow-hidden rounded-xl">
+      <table class="w-full table-fixed text-[12px]">
+        <thead class="bg-white/40 text-left text-[11px] text-ink/70">
+          <tr class="border-b border-ink/10">
+            <th class="w-28 py-2 pl-3 font-medium">Date</th>
+            @if (isTeam()) {
+              <th class="w-36 py-2 font-medium">Person</th>
+            }
+            <th class="py-2 font-medium">Ticket</th>
+            <th class="w-28 py-2 font-medium">Activity</th>
+            <th class="w-16 py-2 text-right font-medium">Time</th>
+            <th class="hidden py-2 pl-3 font-medium md:table-cell">Note</th>
+            <th class="w-10 py-2"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (w of logs(); track w.id) {
+            @let issue = issueOf(w);
+            @let act = activityOf(w.activity);
+            <tr class="border-b border-ink/[0.06] last:border-0 hover:bg-white/50">
+              <td class="py-1.5 pl-3 tabular-nums text-ink/70">{{ w.startedAt | date: 'EEE d MMM' }}</td>
+              @if (isTeam()) {
+                <td class="py-1.5"><span class="flex items-center gap-1.5"><app-avatar [user]="store.userById(w.userId)" size="sm" /><span class="truncate">{{ store.userById(w.userId)?.name }}</span></span></td>
+              }
+              <td class="truncate py-1.5">
+                @if (issue) {
+                  <a class="font-mono text-[11px] text-ink/70 hover:text-brand" [routerLink]="['/tickets', issue.key]">{{ issue.key }}</a>
+                  <span class="ml-1.5" [title]="issue.summary">{{ issue.summary }}</span>
+                }
+              </td>
+              <td class="py-1.5"><span class="pill py-0" [style.color]="(act.color) | readable">{{ act.label }}</span></td>
+              <td class="py-1.5 text-right font-semibold tabular-nums">{{ fmt(w.minutes) }}</td>
+              <td class="hidden truncate py-1.5 pl-3 text-ink/70 md:table-cell" [title]="w.note ?? ''">
+                {{ w.note ?? '' }}@if (w.fromTimer) { <span class="tag ml-1 py-0 text-[10px]">timer</span> }
+              </td>
+              <td class="py-1.5 pr-2 text-right">
+                <button type="button" class="rounded p-0.5 text-ink/70 hover:text-red-700" aria-label="Delete entry" title="Delete entry" (click)="deleteLog(w)"><app-icon name="trash" [size]="13" /></button>
+              </td>
+            </tr>
+          } @empty {
+            <tr><td colspan="7" class="px-3 py-6 text-center text-[12px] text-ink/70">No entries this week.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+
+  @if (!isTeam()) {
+    <app-log-time-dialog
+      [open]="dialogOpen()"
+      [userId]="person()"
+      [issueId]="dialogIssue()"
+      [day]="dialogDay()"
+      (closed)="dialogOpen.set(false)"
+      (saved)="showToast($event)"
+    />
+  }
+
+  @if (toast()) {
+    <div class="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-3.5 py-1.5 text-[12px] text-white shadow-lg" role="status">{{ toast() }}</div>
+  }
+</div>
