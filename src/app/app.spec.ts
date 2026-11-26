@@ -9,7 +9,7 @@ import { ExternalStore } from './core/external-store';
 import { matchScore, searchAll } from './core/search';
 import { AUTOMATION_ID, allConditionsMatch, ruleProblem } from './core/automation';
 import { homeFor } from './layout/nav';
-import { diffState } from './core/state-diff';
+import { applyChanges, diffState } from './core/state-diff';
 import { contrastRatio, readableColor } from './shared/readable';
 
 describe('DataStore', () => {
@@ -1033,5 +1033,36 @@ describe('Accessibility helpers (WCAG 2.2 AA)', () => {
     expect(readableColor('#475569')).toBe('#475569'); // already readable: unchanged
     expect(readableColor(undefined)).toBeNull();
     expect(readableColor('currentColor')).toBe('currentColor');
+  });
+});
+
+describe('Server-owned rules (Step 18c)', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('merges records the server changed and keeps untouched collections as they were', () => {
+    const store = TestBed.inject(DataStore);
+    const state = (store as unknown as { state: () => import('./core/models').DataState }).state();
+    const web2 = state.issues.find((i) => i.key === 'WEB-2')!;
+    const merged = applyChanges(state, [
+      { collection: 'issues', op: 'upsert', id: web2.id, data: { ...web2, assigneeId: 'u13' } },
+      { collection: 'comments', op: 'upsert', id: 'srv-c1', data: { id: 'srv-c1', issueId: web2.id, authorId: 'automation', body: 'From a rule', createdAt: '2026-11-26T10:00:00.000Z' } },
+      { collection: 'automationLog', op: 'upsert', id: 'srv-r1', data: { id: 'srv-r1', ruleId: 'ar2', ruleName: 'x', issueId: web2.id, issueKey: 'WEB-2', trigger: 'issue_created', at: '2026-11-26T10:00:00.000Z', outcome: 'done', details: [] } },
+      { collection: 'summaryNotes', op: 'upsert', id: 'week:2026-11-23', data: { key: 'week:2026-11-23', text: 'Server note' } },
+    ]);
+    expect(merged.issues.find((i) => i.id === web2.id)!.assigneeId).toBe('u13');
+    expect(merged.comments.at(-1)!.authorId).toBe('automation');
+    expect(merged.automationLog[0]!.id).toBe('srv-r1'); // newest first
+    expect(merged.summaryNotes['week:2026-11-23']).toBe('Server note');
+    expect(merged.products).toBe(state.products); // untouched collections keep their array
+    expect(diffState(merged, merged)).toEqual([]);
+  });
+
+  it('leaves rules to the server in server mode', () => {
+    const store = TestBed.inject(DataStore);
+    store.setRuleEnabled('ar2', true);
+    store.hydrate((store as unknown as { state: () => import('./core/models').DataState }).state());
+    const issue = store.createIssue({ productId: 'p1', type: 'support', priority: 'medium', summary: 'No local rules' });
+    expect(issue.assigneeId).toBeUndefined(); // the browser engine is off; the server assigns it
+    expect(store.runTimedRules()).toBe(0);
   });
 });

@@ -53,8 +53,9 @@ Every write (POST) must send the `X-XSRF-TOKEN` header with the value of the `XS
 | GET | `/api/issues?productId=&q=` | tickets in scope (production users: own + their client's) |
 | GET | `/api/issues/{key}` | 404 unknown, 403 not allowed |
 | GET | `/api/state` | 18b: everything the person may see, in the frontend's DataState shape |
-| POST | `/api/sync` | 18b: `{ changes: [{ collection, op: upsert or delete, id, data }] }` — each change checked against role + scope, all-or-nothing (403 refused, 409 conflict) |
+| POST | `/api/sync` | 18b: `{ changes: [{ collection, op: upsert or delete, id, data }] }` — each change checked against role + scope, all-or-nothing (403 refused, 409 conflict). 18c: the server then numbers new tickets and runs automation; the answer is `{ saved, version, changes }` with everything it changed |
 | POST | `/api/people/{id}/password` | 18b: admins set a person's password |
+| GET | `/api/state/version` | 18c: data version (moves on every save and timed rule run); the app polls it every 30 s |
 
 JSON uses the frontend's shape: camelCase, the same lower_snake values (`division_head`, `in_progress`), empty optional
 fields left out.
@@ -72,6 +73,7 @@ fields left out.
 1. Install the **ASP.NET Core 10 Hosting Bundle** on the Windows server.
 2. `dotnet publish server/src/Npro.Api -c Release -o publish` (the generated `web.config` uses the in-process
    ASP.NET Core Module); copy the Angular production build into `publish/wwwroot` so one IIS site serves both.
-3. App pool: *No Managed Code*; for the automation timer (18c) set **Start mode = AlwaysRunning** and
-   **Preload enabled = true** on the site.
+3. App pool: *No Managed Code*; for the timed automation rules (background service, every minute) set
+   **Start mode = AlwaysRunning** and **Preload enabled = true** on the site, or IIS stops them when idle.
+   (`Automation:TimedRules` = false switches the timer off.)
 4. Give the app pool identity access to SQL Server (or use a SQL login in the secret connection string).

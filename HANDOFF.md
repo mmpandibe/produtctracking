@@ -1,4 +1,4 @@
-# nPro — Session handoff (as of 2026-11-26, after Step 18b)
+# nPro — Session handoff (as of 2026-11-26, after Step 18c)
 
 Read this first in a new session. Also see `ROADMAP.md` (step list) — this file is the working context.
 
@@ -240,7 +240,7 @@ on AWS Windows servers under IIS.** Plan (each part verified end to end before t
   the same site (no CORS). Connection strings / keys from AWS Secrets Manager or Parameter Store, never in the repo.
 - **18b Core data ✅ (done 2026-11-26):** organisation, products, clients, workflows, tickets, comments, history via REST; Angular `DataStore`
   switches from localStorage to HttpClient behind the same method names (signals updated from responses).
-- **18c Work features:** sprints, roadmaps, time logs / timers, support SLA, reports / CXO queries, automation engine
+- **18c Work features ✅ (done 2026-11-26, rules part):** sprints, roadmaps, time logs / timers, support SLA, reports / CXO queries, automation engine
   server-side; timed rules in a hosted background service (IIS app pool must be AlwaysRunning + preload enabled, or the
   job moves to a Windows service).
 - **18d Files, integrations, deploy:** attachments to S3 (AWSSDK.S3), productivity / attendance proxy (`BackendProxySource`
@@ -308,5 +308,34 @@ client users have none; `withDefaults` backfills old local data). **Sign-in acce
 (`POST /api/auth/login { login, password }`, `email` still accepted; employee IDs only match internal people, any letter case;
 error "Wrong email, employee ID or password"). Attendance / productivity still match people by email (sample data keys) —
 switch `ExternalStore.employeeId` to the HR employee ID when the real systems are wired (18d). Tests: server 15, Angular 76.
-**Next (18c):** move ticket creation / numbering, automation (including timed rules as a hosted BackgroundService) and the
-history bookkeeping to the server; a "Set password" action on the Organisation page; work and report queries server-side.
+**18c as built (2026-11-26):**
+- **Ticket numbers on the server:** a ticket insert in `POST /api/sync` gets its key from `NextKeyAsync` (EF `ExecuteUpdate`
+  IssueCounter + 1 → row lock until commit, so concurrent creators get different keys); if it differs from the browser's guess
+  the issue (and the "created ticket" activity's `to`) is rewritten and returned. The product's `issueCounter` is server-owned:
+  incoming values are ignored.
+- **Automation on the server:** `Npro.Infrastructure/Rules/RuleEngine.cs` (port of the DataStore engine: same triggers,
+  conditions, actions, round-robin, escalate, workflow-checked set-status with "Skipped: …" in the run log, `automation` actor,
+  loop guard chain + max 5, run log capped at 300) and `Rules/Sla.cs` (port of sla.ts clocks). The sync batch records events
+  (issue_created, status / assignee / priority changed, comment_added by people) and fires them after saving, in the same
+  transaction. **Timed rules:** `TimedRulesService` (BackgroundService, every minute; `Automation:TimedRules` = false turns it off;
+  tests call `TimedRulesService.RunOnceAsync`). IIS: app pool Start mode = AlwaysRunning + site Preload enabled.
+- **Changes back to the browser:** `ChangeCollector` gathers everything the server changed; `POST /api/sync` now answers
+  `{ saved, version, changes: [{ collection, op, id, data }] }`; the store merges them with `applyChanges` (`core/state-diff.ts`)
+  into both the shown state and the sync baseline (so they're not sent back).
+- **Live updates:** `ChangeFeed` (singleton version, starts at the clock; bumped by every sync and timed run);
+  `GET /api/state/version`; `/api/state` includes `version`; the store polls every 30 s (tab visible, nothing pending) and
+  reloads when it moved. (One IIS worker; a web farm would keep the version in the DB / a cache.)
+- **Browser engine off in server mode:** `fireRules` / `runTimedRules` return early when `remote()`; the shell's timer runs
+  rules only in the offline demo.
+- **Dates:** API JSON writes timestamps as UTC `…Z` (`UtcDateConverter`) like `toISOString()`, because the app sorts some lists
+  by comparing these strings.
+- **Set password UI:** Organisation › People row menu › "Set password" (admins, server mode) → `password-form.ts` (10+ chars,
+  upper, lower, digit; repeat) → `POST /api/people/{id}/password`; adding a person in server mode reminds you to set one.
+- Verified end to end on SQL Express: signed in as EMP-001, switched on the round-robin rule, raised a support ticket → the server
+  numbered it (WEB-6) and assigned it to Ana Costa; history showed "Automation ran rule … / updated assignee"; then deleted the test
+  ticket and switched the rule off again. Tests: server 20 (ServerRulesTests: key race + activity rename, round-robin on the server,
+  workflow-blocked set-status logged as partial, timed escalation once per ticket, version moves); Angular 79. a11y scan clean.
+- **Still in the browser:** history entries for people's own edits (validated on the server: must be recorded as yourself),
+  firstResponseAt / work-date stamping on people's edits, reports / CXO calculations (from the synced data).
+**Next (18d):** attachments to S3 (bytes still only in the uploader's IndexedDB), the productivity / attendance proxy with
+real API keys on the server, IIS publish profile + deployment steps + health check.

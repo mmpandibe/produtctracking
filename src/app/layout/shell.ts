@@ -66,9 +66,9 @@ export class Shell {
       if (this.store.activeTimer()) this.tick.set(Date.now());
     }, 1000);
     // Step 17: time-based automation rules (SLA at risk / breached, due date passed) are checked every minute
-    // Server mode: only an admin's session runs them until they move to the server (18c), so they don't run in every browser
+    // Offline demo only: with the API, the server runs timed rules every minute (Step 18c)
     const runRules = () => {
-      if (!this.store.remote() || this.store.currentUser().role === 'admin') this.store.runTimedRules();
+      if (!this.store.remote()) this.store.runTimedRules();
     };
     runRules();
     const rules = setInterval(runRules, 60_000);

@@ -399,6 +399,11 @@
         <app-icon name="pencil" [size]="13" /> Edit
       </button>
       @if (u.id !== store.currentUser().id) {
+        @if (store.remote() && store.currentUser().role === 'admin') {
+          <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="setPassword(u)">
+            <app-icon name="lock" [size]="13" /> Set password
+          </button>
+        }
         <button type="button" role="menuitem" class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] hover:bg-ink/5" (click)="toggleActive(u)">
           <app-icon [name]="u.inactive ? 'archive-restore' : 'archive'" [size]="13" /> {{ u.inactive ? 'Reactivate' : 'Deactivate' }}
         </button>
@@ -409,7 +414,8 @@
     </div>
   }
 
-  <app-person-form [open]="personOpen()" [person]="editingPerson()" [teamPreset]="personTeam()" (closed)="personOpen.set(false)" (saved)="showToast($event)" />
+  <app-person-form [open]="personOpen()" [person]="editingPerson()" [teamPreset]="personTeam()" (closed)="personOpen.set(false)" (saved)="personSaved($event)" />
+  <app-password-form [open]="!!passwordFor()" [person]="passwordFor()" (closed)="passwordFor.set(undefined)" (saved)="showToast($event)" />
   <app-division-form [open]="divisionOpen()" [division]="editingDivision()" (closed)="divisionOpen.set(false)" (saved)="showToast($event)" />
   <app-team-form [open]="teamOpen()" [team]="editingTeam()" [divisionPreset]="teamDivision()" (closed)="teamOpen.set(false)" (saved)="showToast($event)" />
   <app-vendor-form [open]="vendorOpen()" [vendor]="editingVendor()" (closed)="vendorOpen.set(false)" (saved)="showToast($event)" />

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npro.Domain;
 using Npro.Infrastructure;
+using Npro.Infrastructure.Rules;
 
 namespace Npro.Api;
 
@@ -22,6 +23,7 @@ public static class Sync
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new UtcDateConverter() },
     };
 
     public const string AutomationId = "automation";
@@ -29,13 +31,15 @@ public static class Sync
     public static void MapSync(this RouteGroupBuilder data)
     {
         // Everything the signed-in person may see, in the shape of the frontend's DataState
-        data.MapGet("/state", async (RequestAccess access, NproDbContext db) =>
+        data.MapGet("/state", async (RequestAccess access, NproDbContext db, ChangeFeed feed) =>
         {
             var (me, scope) = (await access.GetAsync())!.Value;
-            return Results.Json(await Snapshot(db, me, scope), Json);
+            var snapshot = await Snapshot(db, me, scope);
+            snapshot["version"] = feed.Version;
+            return Results.Json(snapshot, Json);
         });
 
-        data.MapPost("/sync", async (SyncRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users) =>
+        data.MapPost("/sync", async (SyncRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users, ChangeFeed feed) =>
         {
             var (me, scope) = (await access.GetAsync())!.Value;
             // SQL Server runs with retry-on-failure, so the transaction goes through the execution strategy
@@ -58,8 +62,13 @@ public static class Sync
                         }
                     }
                     await db.SaveChangesAsync();
+                    // Step 18c: the server's own rules — automation for every event in the batch (as the automation user)
+                    var engine = new RuleEngine(db, ctx.Changes, DateTimeOffset.Now);
+                    foreach (var (trigger, issueId, value) in ctx.Events) await engine.FireAsync(trigger, issueId, value);
+                    await db.SaveChangesAsync();
                     await tx.CommitAsync();
-                    return Results.Ok(new { saved = req.Changes.Count });
+                    var version = feed.Bump();
+                    return Results.Json(new { saved = req.Changes.Count, version, changes = ToChanges(ctx.Changes) }, Json);
                 }
                 catch (DbUpdateException)
                 {
@@ -70,6 +79,9 @@ public static class Sync
                 }
             });
         });
+
+        // Cheap check the app polls: changes when anyone saves, or when a timed rule runs
+        data.MapGet("/state/version", (ChangeFeed feed) => Results.Ok(new { version = feed.Version }));
 
         // Admins set a person's sign-in password (new people have none until then)
         data.MapPost("/people/{id}/password", async (string id, PasswordRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users) =>
@@ -161,6 +173,12 @@ public static class Sync
         /// <summary>Products and tickets created earlier in the same batch count as visible</summary>
         public HashSet<string> NewProducts { get; } = [];
         public Dictionary<string, Issue> NewIssues { get; } = [];
+        /// <summary>Rule triggers raised by this batch: (trigger, issue id, value)</summary>
+        public List<(string Trigger, string IssueId, string? Value)> Events { get; } = [];
+        /// <summary>Records the server changed on its own, sent back to the browser</summary>
+        public ChangeCollector Changes { get; } = new();
+        /// <summary>Ticket id → (key the browser guessed, key the server gave)</summary>
+        public Dictionary<string, (string Client, string Server)> Renamed { get; } = [];
 
         public bool Staff => Me.Role != Roles.ProductionUser;
 
@@ -221,9 +239,11 @@ public static class Sync
                     return null;
                 }
                 if (next is null) return await CanRemoveProduct(c, old!) ? null : "Only an admin or the division head can delete this product";
-                // Creating a ticket bumps the product's ticket counter: allowed for anyone who can create tickets there
-                if (OnlyChanged(old!, next, "issueCounter") && c.Can(Capabilities.Tickets, old!.Id)) return null;
-                return c.Can(Capabilities.Products, old!.Id) ? null : "You can't change this product";
+                // The server owns the ticket counter (18c): whatever the browser sends, the stored value stays
+                next.IssueCounter = old!.IssueCounter;
+                // A ticket creator's counter bump is then a no-op, which anyone who can create tickets there may send
+                if (OnlyChanged(old, next, "issueCounter") && c.Can(Capabilities.Tickets, old.Id)) return null;
+                return c.Can(Capabilities.Products, old.Id) ? null : "You can't change this product";
             }),
 
             "issues" => await Upsert<Issue>(c, ch, async (old, next) =>
@@ -232,7 +252,19 @@ public static class Sync
                 {
                     if (!c.Can(Capabilities.Tickets, next.ProductId)) return "You can't create tickets on this product";
                     if (!c.Staff && next.ReporterId != c.Me.Id) return "Tickets you raise must be reported by you";
+                    // 18c: the server gives the number — the counter is bumped in the database (row lock until commit),
+                    // so two people creating tickets at the same moment get different keys
+                    var key = await NextKeyAsync(c.Db, next.ProductId);
+                    if (key is null) return "Unknown product";
+                    if (key != next.Key)
+                    {
+                        c.Renamed[next.Id] = (next.Key, key);
+                        next.Key = key;
+                        c.Changes.Upsert("issues", next.Id, next);
+                    }
+                    c.Changes.Upsert("products", next.ProductId, (await c.Db.Products.AsNoTracking().FirstAsync(p => p.Id == next.ProductId)));
                     c.NewIssues[next.Id] = next;
+                    c.Events.Add(("issue_created", next.Id, null));
                     return null;
                 }
                 if (next is null) return c.Can(Capabilities.Products, old!.ProductId) ? null : "You can't delete this ticket";
@@ -240,14 +272,24 @@ public static class Sync
                 // A comment only touches updatedAt (and the response clock for staff)
                 if (OnlyChanged(old, next, "updatedAt", "firstResponseAt")) return null;
                 if (!c.Staff) return "Only staff can edit tickets";
-                return c.Can(Capabilities.Tickets, old.ProductId) && c.Can(Capabilities.Tickets, next.ProductId) ? null : "You can't edit tickets on this product";
+                if (!(c.Can(Capabilities.Tickets, old.ProductId) && c.Can(Capabilities.Tickets, next.ProductId))) return "You can't edit tickets on this product";
+                next.Key = old.Key; // keys never change after creation
+                if (next.StatusId != old.StatusId) c.Events.Add(("status_changed", next.Id, next.StatusId));
+                if (next.AssigneeId != old.AssigneeId) c.Events.Add(("assignee_changed", next.Id, null));
+                if (next.Priority != old.Priority) c.Events.Add(("priority_changed", next.Id, null));
+                return null;
             }),
 
             "comments" => await Upsert<Comment>(c, ch, async (old, next) =>
             {
                 var r = next ?? old!;
                 if (!await c.CanSeeIssue(r.IssueId)) return "You don't have access to this ticket";
-                if (old is null) return next!.AuthorId == c.Me.Id || next.AuthorId == AutomationId ? null : "Comments must be written by you";
+                if (old is null)
+                {
+                    if (next!.AuthorId != c.Me.Id && next.AuthorId != AutomationId) return "Comments must be written by you";
+                    if (next.AuthorId != AutomationId) c.Events.Add(("comment_added", next.IssueId, null));
+                    return null;
+                }
                 return old.AuthorId == c.Me.Id || c.Me.Role == Roles.Admin ? null : "You can only change your own comments";
             }),
 
@@ -265,6 +307,11 @@ public static class Sync
                 if (next is null) return c.Can(Capabilities.Products, old!.ProductId) ? null : "History can't be deleted";
                 if (old is not null) return "History can't be changed";
                 if (next.UserId != c.Me.Id && next.UserId != AutomationId) return "History must be recorded as you";
+                if (next.IssueId is not null && c.Renamed.TryGetValue(next.IssueId, out var rename) && next.To == rename.Client)
+                {
+                    next.To = rename.Server;
+                    c.Changes.Upsert("activities", next.Id, next);
+                }
                 if (next.IssueId is not null) return await c.CanSeeIssue(next.IssueId) ? null : "You don't have access to this ticket";
                 return next.ProductId is null || c.Can(Capabilities.Tickets, next.ProductId) || c.NewProducts.Contains(next.ProductId) || c.Me.Role == Roles.Admin ? null : "You can't add history to this product";
             }),
@@ -305,6 +352,20 @@ public static class Sync
             _ => $"Unknown collection {ch.Collection}",
         };
     }
+
+    /// <summary>Allocates the next ticket key for a product (UPDATE takes a row lock until the transaction commits)</summary>
+    private static async Task<string?> NextKeyAsync(NproDbContext db, string productId)
+    {
+        var updated = await db.Products.Where(p => p.Id == productId).ExecuteUpdateAsync(s => s.SetProperty(p => p.IssueCounter, p => p.IssueCounter + 1));
+        if (updated == 0) return null;
+        var p = await db.Products.AsNoTracking().FirstAsync(x => x.Id == productId);
+        // A tracked copy of this product (e.g. from an earlier change in the batch) is stale now
+        foreach (var e in db.ChangeTracker.Entries<Product>().Where(e => e.Entity.Id == productId).ToList()) e.State = EntityState.Detached;
+        return $"{p.Key}-{p.IssueCounter - 1}";
+    }
+
+    public static List<Change> ToChanges(ChangeCollector collector) =>
+        collector.All().Select(x => new Change(x.Collection, x.Op, x.Id, x.Data is null ? null : JsonSerializer.SerializeToElement(x.Data, x.Data.GetType(), Json))).ToList();
 
     private static Task<string?> Admin(SyncContext c) => Task.FromResult(c.Can(Capabilities.Organisation) ? null : "Only admins can change the organisation setup");
 

@@ -26,6 +26,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Seed:DemoPassword"] = Password,
             ["Features:DemoSwitcher"] = "true",
             ["ConnectionStrings:Npro"] = "unused",
+            ["Automation:TimedRules"] = "false", // tests call TimedRulesService.RunOnceAsync directly
         }));
         builder.ConfigureServices(services =>
         {

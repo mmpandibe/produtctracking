@@ -62,3 +62,33 @@ export function diffState(prev: DataState, next: DataState): SyncChange[] {
   // Removals last, children before parents (reverse order), so nothing points at a deleted record mid-batch
   return [...upserts, ...deletes.reverse()];
 }
+
+/**
+ * Step 18c: merges records the server changed on its own (ticket numbers, automation results) into a state.
+ * Unchanged collections keep their array, so the change detection above stays reference-based.
+ */
+export function applyChanges(state: DataState, changes: SyncChange[]): DataState {
+  if (!changes.length) return state;
+  const next: DataState = { ...state };
+  const keyOf = new Map(COLLECTIONS.map((c) => [c.name as string, c.key]));
+  for (const ch of changes) {
+    if (ch.collection === 'summaryNotes') {
+      const notes = { ...next.summaryNotes };
+      if (ch.op === 'delete') delete notes[ch.id];
+      else notes[ch.id] = (ch.data as { text: string }).text;
+      next.summaryNotes = notes;
+      continue;
+    }
+    const key = keyOf.get(ch.collection);
+    if (!key) continue;
+    const name = ch.collection as keyof DataState;
+    const list = next[name] as unknown as Record<string, unknown>[];
+    const idx = list.findIndex((r) => String(r[key]) === ch.id);
+    let updated: Record<string, unknown>[];
+    if (ch.op === 'delete') updated = idx < 0 ? list : list.filter((_, i) => i !== idx);
+    else if (idx < 0) updated = ch.collection === 'automationLog' ? [ch.data as Record<string, unknown>, ...list] : [...list, ch.data as Record<string, unknown>];
+    else updated = list.map((r, i) => (i === idx ? (ch.data as Record<string, unknown>) : r));
+    (next as unknown as Record<string, unknown>)[name] = updated;
+  }
+  return next;
+}

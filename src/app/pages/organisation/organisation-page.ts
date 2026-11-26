@@ -9,6 +9,7 @@ import { Modal } from '../../shared/modal';
 import { PageHeader } from '../../shared/page-header';
 import { DivisionForm, TeamForm, VendorForm } from './org-forms';
 import { PersonForm } from './person-form';
+import { PasswordForm } from './password-form';
 import { ReadablePipe } from '../../shared/readable';
 
 type Tab = 'structure' | 'people' | 'vendors' | 'roles';
@@ -16,7 +17,7 @@ type Tab = 'structure' | 'people' | 'vendors' | 'roles';
 /** Step 11: divisions → teams → members, people (internal / vendor / client), vendors and roles. */
 @Component({
   selector: 'app-organisation-page',
-  imports: [ReadablePipe, Avatar, Icon, Modal, PageHeader, PersonForm, DivisionForm, TeamForm, VendorForm],
+  imports: [PasswordForm, ReadablePipe, Avatar, Icon, Modal, PageHeader, PersonForm, DivisionForm, TeamForm, VendorForm],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './organisation-page.html',
 })
@@ -273,6 +274,19 @@ export class OrganisationPage {
     } catch (err) {
       this.showToast((err as Error).message);
     }
+  }
+
+  /** Server mode: admins set sign-in passwords */
+  protected readonly passwordFor = signal<User | undefined>(undefined);
+
+  protected setPassword(u: User) {
+    this.menuFor.set(null);
+    this.passwordFor.set(u);
+  }
+
+  /** A new person in server mode can't sign in until an admin sets a password: say so */
+  protected personSaved(msg: string) {
+    this.showToast(this.store.remote() && msg.endsWith(' added') ? msg + ' · set a password from the row menu so they can sign in' : msg);
   }
 
   protected toggleMenu(id: string, e: MouseEvent) {

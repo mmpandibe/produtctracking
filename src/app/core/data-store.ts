@@ -7,7 +7,7 @@ import type {
 } from './models';
 import { api } from './api';
 import { fileStore } from './file-store';
-import { diffState } from './state-diff';
+import { type SyncChange, applyChanges, diffState } from './state-diff';
 import { migrateV10, migrateV9 } from './migrate';
 import { type SlaClock, nextLevel, slaClock } from './sla';
 import { type Capability, can } from './roles';
@@ -342,10 +342,38 @@ export class DataStore {
 
   /** Replaces all data with a server snapshot and switches to server mode */
   hydrate(server: DataState) {
-    const state = withDefaults({ ...server, summaryNotes: server.summaryNotes ?? {} });
+    const { version, ...rest } = server as DataState & { version?: number };
+    const state = withDefaults({ ...rest, summaryNotes: rest.summaryNotes ?? {} });
     this.synced = state;
+    if (version !== undefined) this.serverVersion = version;
     this.remote.set(true);
     this.state.set(state);
+    this.startPolling();
+  }
+
+  /** Last data version seen from the server (Step 18c) */
+  private serverVersion?: number;
+  private pollHandle?: ReturnType<typeof setInterval>;
+
+  /** Every 30 s, while the tab is visible and nothing is waiting to be saved, reload when someone else changed data */
+  private startPolling() {
+    if (this.pollHandle || typeof window === 'undefined') return;
+    this.pollHandle = setInterval(async () => {
+      if (!this.remote() || document.visibilityState !== 'visible' || this.syncPending() > 0) return;
+      try {
+        const { version } = await api<{ version: number }>('GET', '/api/state/version');
+        if (version !== this.serverVersion && this.syncPending() === 0) await this.reloadFromServer();
+      } catch {
+        // offline for a moment: try again next time
+      }
+    }, 30_000);
+  }
+
+  /** Merges what the server changed on its own into both the shown state and the sync baseline */
+  private applyServerChanges(changes: SyncChange[]) {
+    if (!changes.length || !this.synced) return;
+    this.synced = applyChanges(this.synced, changes);
+    this.state.set(applyChanges(this.state(), changes));
   }
 
   /** Reloads everything the signed-in person may see from the server */
@@ -362,7 +390,9 @@ export class DataStore {
     this.syncPending.update((n) => n + 1);
     this.syncChain = this.syncChain.then(async () => {
       try {
-        await api('POST', '/api/sync', { changes });
+        const res = await api<{ version?: number; changes?: SyncChange[] }>('POST', '/api/sync', { changes });
+        if (res?.version !== undefined) this.serverVersion = res.version;
+        this.applyServerChanges(res?.changes ?? []);
         this.syncError.set('');
       } catch (err) {
         this.syncError.set((err as Error).message || 'Saving failed');
@@ -956,8 +986,8 @@ export class DataStore {
   /** Runs every enabled rule for an event on a ticket (called by the store after the change is saved) */
   private fireRules(trigger: AutomationTrigger, issueId: ID, value?: string) {
     if (this.ruleChain.length >= MAX_CHAIN) return;
-    // Server mode: production / client users may not edit tickets, so rules don't run in their session (they move to the server in 18c)
-    if (this.remote() && this.currentUser().role === 'production_user') return;
+    // Server mode: the server runs every rule (Step 18c); the browser engine only runs in the offline demo
+    if (this.remote()) return;
     const issue = this.state().issues.find((i) => i.id === issueId);
     if (!issue) return;
     const rules = this.state().automations.filter(
@@ -977,6 +1007,7 @@ export class DataStore {
    */
   runTimedRules(nowMs = Date.now()) {
     let runs = 0;
+    if (this.remote()) return runs; // the server's background service does this (Step 18c)
     const today = new Date(new Date(nowMs).toDateString()).getTime();
     for (const rule of this.state().automations) {
       if (!rule.enabled || !triggerOf(rule.trigger.type).timed) continue;

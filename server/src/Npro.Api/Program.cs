@@ -50,11 +50,15 @@ builder.Services.AddAntiforgery(o =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<RequestAccess>();
+// Step 18c: data version for polling browsers + timed automation rules every minute
+builder.Services.AddSingleton<ChangeFeed>();
+builder.Services.AddHostedService<TimedRulesService>();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     // Same JSON shape as the Angular model: camelCase, optional fields left out when empty
     o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    o.SerializerOptions.Converters.Add(new UtcDateConverter());
 });
 
 var app = builder.Build();
