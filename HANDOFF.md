@@ -1,6 +1,8 @@
 # nPro — Session handoff (as of 2026-11-26, after Step 18c)
 
 Read this first in a new session. Also see `ROADMAP.md` (step list) — this file is the working context.
+Project documentation (BRD, SRS, design, testing, deployment, support, security / privacy — 73 documents) is in `docs/`
+(start at `docs/README.md`); keep it in step with code changes.
 
 ## What nPro is
 A Jira-style product ticket tracker built **step by step, screen by screen**, with extras the user asked for:
