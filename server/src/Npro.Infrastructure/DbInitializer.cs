@@ -10,9 +10,16 @@ public static class DbInitializer
 {
     /// <param name="useMigrations">SQL Server: apply EF migrations. Tests (SQLite): create the schema directly.</param>
     /// <param name="demoPassword">When set, an empty database gets the demo data and every demo person can sign in with this password.</param>
-    public static async Task InitialiseAsync(NproDbContext db, UserManager<IdentityUser> users, ILogger logger, bool useMigrations, string? demoPassword, DateTimeOffset now)
+    /// <param name="migrateOnStartup">False: don't change the schema, only check it is up to date (the DBA applies the SQL script).</param>
+    public static async Task InitialiseAsync(NproDbContext db, UserManager<IdentityUser> users, ILogger logger, bool useMigrations, string? demoPassword, DateTimeOffset now, bool migrateOnStartup = true)
     {
-        if (useMigrations) await db.Database.MigrateAsync();
+        if (useMigrations && migrateOnStartup) await db.Database.MigrateAsync();
+        else if (useMigrations)
+        {
+            var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+            if (pending.Count > 0)
+                throw new InvalidOperationException($"The database schema is out of date (pending: {string.Join(", ", pending)}). Run deploy/sql/02-schema.sql from this release, then start nPro again.");
+        }
         else await db.Database.EnsureCreatedAsync();
 
         if (string.IsNullOrEmpty(demoPassword)) return;

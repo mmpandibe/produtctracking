@@ -5,7 +5,7 @@
 | Document ID | NPRO-DB-001 |
 | Version | 1.0 (draft) · 27 Nov 2026 |
 | DBMS | Microsoft SQL Server (dev: SQL Express `.\SQLEXPRESS`, database `Npro`) |
-| Schema management | EF Core migrations in `server/src/Npro.Infrastructure/Migrations` (`Initial`, `EmployeeId`) |
+| Schema management | EF Core migrations in `server/src/Npro.Infrastructure/Migrations` (`Initial`, `EmployeeId`, `AttendanceRequests`, `SecurityFollowUps`); production SQL in `deploy/sql/` |
 | Related | ERD NPRO-ERD-001 |
 
 ## 1. Conventions
@@ -19,7 +19,7 @@
 
 | Table | Purpose | Key columns / notes |
 |---|---|---|
-| People | Users (staff, vendor, client) | Id, Name, Email (unique), Role, Kind, Title, **EmployeeId (unique where not null)**, Phone (legacy), TeamId, ManagerId, VendorId, ClientId, Inactive |
+| People | Users (staff, vendor, client) | Id, Name, Email (unique), Role, Kind, Title, **EmployeeId (unique where not null)**, Phone (legacy), TeamId, ManagerId, VendorId, ClientId, Inactive; server-owned: MustChangePassword, LastSignInAt, DeactivatedAt, AnonymisedAt |
 | Divisions | Top of organisation | Id, Name, Description, HeadId, Color |
 | Teams | Teams in divisions | Id, DivisionId (idx), Name, ManagerId |
 | Vendors | External companies | Id, Name, contact fields, Notes |
@@ -40,6 +40,8 @@
 | SlaPolicies | Targets | Id, Level, Priority (unique pair), ResponseMinutes, ResolutionMinutes |
 | SupportLevels | Level settings | Level (PK), Name, Description, TeamId |
 | SummaryNotes | CXO comments | Key (PK, e.g. `week:2026-11-23`), Text |
+| LeaveRequests | Leave requests and approvals | Id, PersonId (idx), Type, From, To (`yyyy-MM-dd`), HalfDay, Reason, Status, AppliedAt, DecidedBy, DecidedAt |
+| RegularisationRequests | Attendance corrections | Id, PersonId + Date (idx), PunchIn, PunchOut, Reason, Status, AppliedAt, DecidedBy, DecidedAt |
 | AspNetUsers, AspNetRoles, AspNetUserClaims, AspNetUserLogins, AspNetUserTokens, AspNetRoleClaims, AspNetUserRoles | ASP.NET Core Identity | AspNetUsers.Id = People.Id; password hash, lockout, security stamp |
 
 ## 3. Volumes and growth (estimate)
@@ -55,5 +57,8 @@ Full backup daily, log backups hourly (Backup and Restore Procedure). Integrity 
 FK constraints is planned. Encryption at rest: TDE (Standard / Enterprise) or encrypted EBS volumes; TLS for connections.
 
 ## 6. Migrations
-`dotnet ef migrations add <Name> -p server/src/Npro.Infrastructure -s server/src/Npro.Api -o Migrations`. The API applies pending
-migrations at start-up (`MigrateAsync`). Production: review generated SQL (`dotnet ef migrations script`) before release.
+`dotnet ef migrations add <Name> -p server/src/Npro.Infrastructure -s server/src/Npro.Api -o Migrations`, then
+`deploy/sql/generate-schema.ps1` regenerates the idempotent `deploy/sql/02-schema.sql`. Development: the API applies pending
+migrations at start-up. Production: an admin runs `02-schema.sql`, and the app (`Database:MigrateOnStartup=false`, login with
+read/write only) refuses to start if a migration is missing. Raw SQL inside a migration must be wrapped in `EXEC(N'...')` so the
+idempotent script compiles on a new database. Column-level schema: Manual Deployment Guide NPRO-DEP-009, Appendix A.

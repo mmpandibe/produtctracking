@@ -54,3 +54,4 @@
 | `Attendance:TimeZone` | server time zone | Windows time zone id, e.g. `India Standard Time` |
 | `Retention:Enabled` / `Retention:LegalHold` | true / false | Daily retention job; legal hold pauses all deletion |
 | `Retention:DeactivatedUserYears` / `TimeLogYears` / `AttendanceMonths` | 2 / 7 / 13 | Periods from the Data Retention and Deletion Policy |
+| `Database:MigrateOnStartup` | true | false in production: the app only checks the schema; an admin runs `deploy/sql/02-schema.sql` |

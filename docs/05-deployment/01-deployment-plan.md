@@ -5,7 +5,7 @@
 | Document ID | NPRO-DEP-001 |
 | Version | 1.1 (draft) · 27 Nov 2026 |
 | Target | IIS 10 on Windows Server 2022 (AWS EC2), SQL Server 2022 |
-| Note | Step 18d added `scripts/publish.ps1`, `appsettings.Production.json`, persisted keys and the `create-admin` command |
+| Note | Step-by-step manual install with commands and the database schema: **Manual Deployment Guide NPRO-DEP-009** (`09-manual-aws-deployment-guide.docx`) and the kit in `deploy/` (SQL scripts, `setup-iis.ps1`, `deploy-release.ps1`) |
 
 ## 1. Prerequisites (one-time per server)
 1. Windows Server 2022 with IIS (Web Server role, incl. *WebSocket Protocol* optional, *Application Initialization*).

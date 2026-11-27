@@ -36,7 +36,8 @@ namespace Npro.Infrastructure.Migrations
                 nullable: false,
                 defaultValue: false);
             // People deactivated before this release start their retention period now
-            migrationBuilder.Sql("UPDATE [People] SET [DeactivatedAt] = SYSDATETIMEOFFSET() WHERE [Inactive] = 1");
+            // (EXEC: compiled only when it runs, so the idempotent SQL script works on a new database)
+            migrationBuilder.Sql("EXEC(N'UPDATE [People] SET [DeactivatedAt] = SYSDATETIMEOFFSET() WHERE [Inactive] = 1')");
         }
 
         /// <inheritdoc />

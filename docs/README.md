@@ -70,7 +70,7 @@ FR / NFR, and the RTM links them to design, code and tests.
 ## 5. Deployment & Release Management
 | # | Document | Status |
 |---|---|---|
-| 1 | [Deployment Plan](05-deployment/01-deployment-plan.md) | Complete (parts depend on Step 18d) |
+| 1 | [Deployment Plan](05-deployment/01-deployment-plan.md) | Complete |
 | 2 | [Release Management Document](05-deployment/02-release-management-document.md) | Complete |
 | 3 | [Release Notes](05-deployment/03-release-notes.md) | Complete (development build 0.9) |
 | 4 | [Rollback Plan](05-deployment/04-rollback-plan.md) | Complete |
@@ -78,6 +78,7 @@ FR / NFR, and the RTM links them to design, code and tests.
 | 6 | [Environment Configuration Document](05-deployment/06-environment-configuration-document.md) | Complete |
 | 7 | [Deployment Sign-off](05-deployment/07-deployment-sign-off.md) | Template |
 | 8 | [Disaster Recovery Plan](05-deployment/08-disaster-recovery-plan.md) | Complete (not yet tested) |
+| 9 | [Manual Deployment Guide — AWS, IIS, SQL Server (Word)](05-deployment/09-manual-aws-deployment-guide.docx) | Complete — SQL scripts tested, IIS scripts syntax-checked |
 
 ## 6. Product Maintenance & Support
 | # | Document | Status |

@@ -380,5 +380,13 @@ repo protection + CI.
 deactivated), deletes time logs > 7 years and leave / correction requests > 13 months. `GET /api/access-review` + Organisation →
 People → "Access review" CSV. Server-owned People fields (MustChangePassword, LastSignInAt, DeactivatedAt, AnonymisedAt) are never
 taken from sync. Migration `SecurityFollowUps` (backfills DeactivatedAt for already-inactive people). Server tests 35.
+**Manual AWS deployment kit (2026-11-27):** `deploy/` — `sql/01-create-database.sql`, `02-schema.sql` (idempotent, from
+`sql/generate-schema.ps1`; header sets QUOTED_IDENTIFIER), `03-app-login.sql` (user `npro_app`, datareader/datawriter; pass
+values as `$env:` vars — `-v` breaks on `IIS APPPOOL\nPro`), `04-verify.sql`; `setup-iis.ps1`, `deploy-release.ps1`
+(-Rollback). Word guide `docs/05-deployment/09-manual-aws-deployment-guide.docx` (built by a docx-js script, TOC filled via Word
+COM; Appendix A schema from the DB). `Database:MigrateOnStartup` (false in prod → only checks for pending migrations). The two
+raw-SQL updates in migrations are now wrapped in `EXEC(N'...')`. `publish.ps1` runs dotnet from `server/` (global.json) and also
+writes `nPro-<stamp>-deploy-kit.zip`. PowerShell scripts must stay ASCII (PS 5.1 reads BOM-less files as ANSI). SQL scripts
+tested on SQL Express; IIS scripts only syntax-checked (no IIS locally).
 **Next:** ISO gaps G-5 (admin security-events view, ticket soft-delete) and MFA / SSO, S3 store and live HR / tracker connectors when access and API details arrive;
 SSO / MFA; e-mail notifications.

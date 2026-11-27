@@ -127,7 +127,9 @@ using (var scope = app.Services.CreateScope())
         app.Logger,
         useMigrations: db.Database.IsSqlServer(),
         demoPassword: config["Seed:DemoPassword"],
-        now: DateTimeOffset.Now);
+        now: DateTimeOffset.Now,
+        // Production with a least-privilege database login: schema changes come from deploy/sql/02-schema.sql instead
+        migrateOnStartup: config.GetValue("Database:MigrateOnStartup", true));
 }
 
 // Step 18d: `Npro.Api.exe create-admin …` sets up the first admin of a fresh database, then exits
