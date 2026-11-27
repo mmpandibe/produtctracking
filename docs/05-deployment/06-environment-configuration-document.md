@@ -52,3 +52,5 @@
 | `Attendance:Provider` / `Productivity:Provider` | `sample` | Server-side sample adapter until the HR / tracker API details exist |
 | `Attendance:LateAfter` | `10:00` | Punch-in after this is "late" |
 | `Attendance:TimeZone` | server time zone | Windows time zone id, e.g. `India Standard Time` |
+| `Retention:Enabled` / `Retention:LegalHold` | true / false | Daily retention job; legal hold pauses all deletion |
+| `Retention:DeactivatedUserYears` / `TimeLogYears` / `AttendanceMonths` | 2 / 7 / 13 | Periods from the Data Retention and Deletion Policy |

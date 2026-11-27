@@ -33,7 +33,7 @@ public static class Endpoints
         // ---------- Sign-in ----------
         var auth = api.MapGroup("/auth");
 
-        auth.MapPost("/login", async (LoginRequest req, SignInManager<IdentityUser> signIn, NproDbContext db) =>
+        auth.MapPost("/login", async (LoginRequest req, SignInManager<IdentityUser> signIn, NproDbContext db, SecurityEvents audit) =>
         {
             var login = (req.Login ?? req.Email ?? "").Trim();
             var byEmployeeId = !login.Contains('@');
@@ -43,14 +43,30 @@ public static class Endpoints
                 : await db.People.AsNoTracking().FirstOrDefaultAsync(p => p.Email == login);
             var email = person?.Email ?? login;
             // Same answer for unknown email, wrong password and deactivated people, so accounts can't be probed
-            if (person is null || person.Inactive) return Results.Problem("Wrong email, employee ID or password", statusCode: 401);
+            if (person is null || person.Inactive)
+            {
+                audit.SignInFailed(person?.Id, person is null ? "unknown account" : "deactivated");
+                return Results.Problem("Wrong email, employee ID or password", statusCode: 401);
+            }
             var result = await signIn.PasswordSignInAsync(email, req.Password ?? "", isPersistent: false, lockoutOnFailure: true);
-            if (result.IsLockedOut) return Results.Problem("Too many attempts. Try again in a few minutes.", statusCode: 423);
-            return result.Succeeded ? Results.Ok(new { person.Id }) : Results.Problem("Wrong email, employee ID or password", statusCode: 401);
+            if (result.IsLockedOut)
+            {
+                audit.LockedOut(person.Id);
+                return Results.Problem("Too many attempts. Try again in a few minutes.", statusCode: 423);
+            }
+            if (!result.Succeeded)
+            {
+                audit.SignInFailed(person.Id, "wrong password");
+                return Results.Problem("Wrong email, employee ID or password", statusCode: 401);
+            }
+            audit.SignedIn(person.Id);
+            await db.People.Where(p => p.Id == person.Id).ExecuteUpdateAsync(s => s.SetProperty(p => p.LastSignInAt, DateTimeOffset.Now));
+            return Results.Ok(new { person.Id });
         }).AllowAnonymous().RequireRateLimiting("login");
 
-        auth.MapPost("/logout", async (SignInManager<IdentityUser> signIn) =>
+        auth.MapPost("/logout", async (SignInManager<IdentityUser> signIn, SecurityEvents audit, HttpContext http) =>
         {
+            audit.SignedOut(http.User.Identity?.IsAuthenticated == true ? signIn.UserManager.GetUserId(http.User) : null);
             await signIn.SignOutAsync();
             return Results.NoContent();
         });
@@ -62,15 +78,19 @@ public static class Endpoints
         }).AddEndpointFilter<RequirePerson>();
 
         // Demo "Sign in as" switcher from Phase A. Off unless Features:DemoSwitcher is true (never in production).
-        auth.MapPost("/switch/{userId}", async (string userId, IConfiguration config, SignInManager<IdentityUser> signIn, UserManager<IdentityUser> users, NproDbContext db) =>
+        auth.MapPost("/switch/{userId}", async (string userId, IConfiguration config, SignInManager<IdentityUser> signIn, UserManager<IdentityUser> users, NproDbContext db, RequestAccess access, SecurityEvents audit) =>
         {
             if (!config.GetValue<bool>("Features:DemoSwitcher")) return Results.NotFound();
             var person = await db.People.AsNoTracking().FirstOrDefaultAsync(p => p.Id == userId);
             var account = await users.FindByIdAsync(userId);
             if (person is null || person.Inactive || account is null) return Results.NotFound();
+            audit.Switched((await access.GetAsync())!.Value.Me.Id, person.Id);
             await signIn.SignInAsync(account, isPersistent: false);
             return Results.Ok(new { person.Id });
         }).AddEndpointFilter<RequirePerson>();
+
+        // ISO 27001 follow-ups: change password, access review
+        api.MapCompliance();
 
         // ---------- Read: organisation, products, tickets ----------
         var data = api.MapGroup("").AddEndpointFilter<RequirePerson>();

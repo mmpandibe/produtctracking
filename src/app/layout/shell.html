@@ -82,7 +82,10 @@
       <div class="mb-1.5 border-b border-ink/10 px-1 pb-2">
         <div class="truncate text-[12px] font-medium">{{ store.currentUser().name }}</div>
         <div class="truncate text-[11px] text-ink/70">{{ store.currentUser().email }} · {{ roleLabel() }}</div>
-        <button type="button" class="btn-secondary mt-1.5 w-full justify-center py-1 text-[12px]" (click)="signOut()">Sign out</button>
+        <div class="mt-1.5 grid grid-cols-2 gap-1.5">
+          <a routerLink="/change-password" class="btn-secondary justify-center py-1 text-[12px]" (click)="switcherOpen.set(false)">Change password</a>
+          <button type="button" class="btn-secondary justify-center py-1 text-[12px]" (click)="signOut()">Sign out</button>
+        </div>
       </div>
     } @else {
       <p class="mb-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[10px] text-amber-800">Local demo data in this browser — no nPro server found.</p>

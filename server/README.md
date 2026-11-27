@@ -59,6 +59,8 @@ Every write (POST) must send the `X-XSRF-TOKEN` header with the value of the `XS
 | GET | `/api/attachments/{id}/content` | 18d: download (ticket access checked) |
 | GET | `/api/attendance?from&to` | 18d: attendance, productivity, leave, corrections, balances for the people you can see |
 | POST | `/api/attendance/leave`, `/regularisation`, `/{kind}/{id}/decide`, `/{kind}/{id}/cancel` | 18d: requests and approvals |
+| POST | `/api/auth/password` | change your own password `{ currentPassword, newPassword }` (required first when an admin set it) |
+| GET | `/api/access-review` | admins: everyone's role, scope and sign-in state (quarterly access review) |
 | GET | `/api/state/version` | 18c: data version (moves on every save and timed rule run); the app polls it every 30 s |
 
 JSON uses the frontend's shape: camelCase, the same lower_snake values (`division_head`, `in_progress`), empty optional

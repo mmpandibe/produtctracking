@@ -6,6 +6,9 @@
         <button type="button" class="btn-primary" (click)="openDivision()"><app-icon name="plus" [size]="15" /> Add division</button>
       }
       @case ('people') {
+        @if (store.remote()) {
+          <button type="button" class="btn-secondary" [disabled]="reviewBusy()" (click)="exportAccessReview()"><app-icon name="download" [size]="15" /> Access review</button>
+        }
         <button type="button" class="btn-primary" (click)="addPerson()"><app-icon name="plus" [size]="15" /> Add person</button>
       }
       @case ('vendors') {
@@ -13,6 +16,9 @@
       }
     }
   </app-page-header>
+  @if (reviewError()) {
+    <p class="mb-2 rounded-lg bg-red-50 px-2.5 py-1.5 text-[12px] text-red-800" role="alert">Access review: {{ reviewError() }}</p>
+  }
 
   <!-- Tabs + counts -->
   <div class="glass mb-3 flex flex-wrap items-center gap-2 rounded-xl p-2">

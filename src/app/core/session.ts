@@ -7,8 +7,9 @@ import type { DataState, User } from './models';
  * local: no server found → the Phase A demo running on this browser's storage
  * signed_out: the server is there but nobody is signed in → login page
  * remote: signed in; data comes from and is saved to the server
+ * change_password: signed in with a password an admin set; only the change-password page is available
  */
-export type SessionMode = 'local' | 'signed_out' | 'remote';
+export type SessionMode = 'local' | 'signed_out' | 'remote' | 'change_password';
 
 interface MeResponse {
   user: User;
@@ -47,6 +48,11 @@ export class Session {
   private async loadSignedIn() {
     const me = await api<MeResponse>('GET', '/api/auth/me');
     this.demoSwitcher.set(me.features.demoSwitcher);
+    // The server refuses data until the person replaces an admin-set password
+    if (me.user.mustChangePassword) {
+      this.mode.set('change_password');
+      return;
+    }
     this.store.hydrate(await api<DataState>('GET', '/api/state'));
     this.mode.set('remote');
   }
@@ -56,6 +62,12 @@ export class Session {
     await api('POST', '/api/auth/login', { login: login.trim(), password });
     // /me after signing in also issues a security token for the new session
     await this.loadSignedIn();
+  }
+
+  /** Changes the signed-in person's password; after a forced change, loads their data */
+  async changePassword(currentPassword: string, newPassword: string) {
+    await api('POST', '/api/auth/password', { currentPassword, newPassword });
+    if (this.mode() === 'change_password') await this.loadSignedIn();
   }
 
   async logout() {

@@ -367,4 +367,18 @@ switch `ExternalStore.employeeId` to the HR employee ID when the real systems ar
 - The Data Protection application name changed, so browsers signed in before 18d must sign in again.
 - Verified: server tests 30 (`Step18dTests`), Angular 79, a11y 0 on desktop and mobile, production package run locally
   (create-admin, sign-in by employee ID, headers, 429, font under CSP), dev app: approve a request, upload / download / remove a file.
-**Next:** S3 store and live HR / tracker connectors when access and API details arrive; SSO / MFA; e-mail notifications.
+**ISO/IEC 27001:2022 check (2026-11-27):** `docs/07-security-compliance/15-iso-27001-2022-assessment.md` — readiness
+assessment + draft SoA for all 93 controls (17 ✅ / 35 🟡 / 3 ❌ / 38 organisational or AWS). Added `SecurityEvents`
+(`Hardening.cs`, log category `Npro.Security`, event ids 1001–1301; Windows Event Log in Production) and `SecurityLogTests`
+(server tests 31). Open product gaps G-1…G-7: self-service password change + must-change flag + MFA/SSO, retention job, malware
+scan of uploads, encryption at rest, central log store / admin audit view / ticket soft-delete, access-review export,
+repo protection + CI.
+**ISO follow-ups done (2026-11-27, `Compliance.cs`):** `POST /api/auth/password` + `/change-password` page (user menu link);
+`User.MustChangePassword` set when an admin sets someone's password — `RequirePerson` then allows only `/api/auth/*` (403
+"Password change required"), `Session` mode `change_password` routes everything to the page. `RetentionService` (daily,
+`Retention:*`, legal hold; `RunOnceAsync` for tests) anonymises people 2 years after `DeactivatedAt` (set by sync when
+deactivated), deletes time logs > 7 years and leave / correction requests > 13 months. `GET /api/access-review` + Organisation →
+People → "Access review" CSV. Server-owned People fields (MustChangePassword, LastSignInAt, DeactivatedAt, AnonymisedAt) are never
+taken from sync. Migration `SecurityFollowUps` (backfills DeactivatedAt for already-inactive people). Server tests 35.
+**Next:** ISO gaps G-5 (admin security-events view, ticket soft-delete) and MFA / SSO, S3 store and live HR / tracker connectors when access and API details arrive;
+SSO / MFA; e-mail notifications.

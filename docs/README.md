@@ -111,6 +111,7 @@ FR / NFR, and the RTM links them to design, code and tests.
 | 12 | [AI Model Risk Assessment](07-security-compliance/12-ai-model-risk-assessment.md) | N/A for the product; AI-assisted development assessed |
 | 13 | [AI Model Validation Report](07-security-compliance/13-ai-model-validation-report.md) | N/A (no model) + template |
 | 14 | [Third-Party Vendor Assessment Document](07-security-compliance/14-third-party-vendor-assessment.md) | Complete (2 vendors pending) |
+| 15 | [ISO/IEC 27001:2022 Readiness Assessment and Statement of Applicability](07-security-compliance/15-iso-27001-2022-assessment.md) | Draft (self-assessment; 7 product gaps) |
 
 ## Key open items surfaced by this documentation
 1. Production prerequisites (Step 18d): persist Data Protection keys, first-admin set-up, security headers, rate limiting, file storage.

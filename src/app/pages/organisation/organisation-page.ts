@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { api } from '../../core/api';
 import { DataStore } from '../../core/data-store';
+import { downloadCsv } from '../../core/reports';
 import type { Division, Role, Team, User, UserKind, Vendor } from '../../core/models';
 import { CAPABILITIES, ROLES, USER_KINDS, can, roleOf } from '../../core/roles';
 import { Avatar } from '../../shared/avatar';
@@ -28,6 +30,32 @@ export class OrganisationPage {
   protected readonly capabilities = CAPABILITIES;
   protected readonly roleOf = roleOf;
   protected readonly can = can;
+
+  /** ISO 27001 A.5.18: quarterly access review — everyone's role, scope and sign-in state as CSV (from the server) */
+  protected readonly reviewBusy = signal(false);
+  protected readonly reviewError = signal('');
+
+  protected async exportAccessReview() {
+    this.reviewBusy.set(true);
+    this.reviewError.set('');
+    try {
+      type Row = Record<string, string | boolean | undefined>;
+      const r = await api<{ generatedAt: string; rows: Row[] }>('GET', '/api/access-review');
+      const day = (v: unknown) => (typeof v === 'string' ? v.slice(0, 10) : '');
+      downloadCsv(`npro-access-review-${r.generatedAt.slice(0, 10)}.csv`, [
+        ['Name', 'Email', 'Employee ID', 'Kind', 'Role', 'Company', 'Team', 'Manager', 'Status', 'Products', 'Can sign in', 'Must change password', 'Locked out', 'Last sign-in', 'Deactivated', 'Reviewed (keep / change / remove)'],
+        ...r.rows.map((x) => [
+          x['name'] as string, x['email'] as string, x['employeeId'] as string, x['kind'] as string, roleOf(x['role'] as Role)?.label ?? (x['role'] as string),
+          x['company'] as string, x['team'] as string, x['manager'] as string, x['status'] as string, x['products'] as string,
+          x['canSignIn'] ? 'yes' : 'no', x['mustChangePassword'] ? 'yes' : 'no', x['lockedOut'] ? 'yes' : 'no', day(x['lastSignInAt']) || 'never', day(x['deactivatedAt']), '',
+        ]),
+      ]);
+    } catch (err) {
+      this.reviewError.set((err as Error).message);
+    } finally {
+      this.reviewBusy.set(false);
+    }
+  }
 
   protected readonly tab = signal<Tab>((inject(ActivatedRoute).snapshot.queryParamMap.get('tab') as Tab) || 'structure');
 

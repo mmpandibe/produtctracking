@@ -91,7 +91,7 @@ public static class AttendanceEndpoints
             return Results.Json(ToDto(request), Sync.Json);
         });
 
-        g.MapPost("/{kind}/{id}/decide", async (string kind, string id, DecisionInput input, RequestAccess access, NproDbContext db, ChangeFeed feed) =>
+        g.MapPost("/{kind}/{id}/decide", async (string kind, string id, DecisionInput input, RequestAccess access, NproDbContext db, ChangeFeed feed, SecurityEvents audit) =>
         {
             var (me, _) = (await access.GetAsync())!.Value;
             if (input.Decision is not ("approved" or "rejected")) return Bad("Decision must be approved or rejected");
@@ -102,6 +102,7 @@ public static class AttendanceEndpoints
             if (status != "pending") return Results.Problem("This request was already decided", statusCode: 409);
             apply!(input.Decision, me.Id);
             await db.SaveChangesAsync();
+            audit.Decided(me.Id, kind, id, input.Decision);
             feed.Bump();
             return Results.NoContent();
         });

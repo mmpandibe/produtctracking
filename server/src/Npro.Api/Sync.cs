@@ -40,7 +40,7 @@ public static class Sync
             return Results.Json(snapshot, Json);
         });
 
-        data.MapPost("/sync", async (SyncRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users, ChangeFeed feed, IFileStore files) =>
+        data.MapPost("/sync", async (SyncRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users, ChangeFeed feed, IFileStore files, SecurityEvents audit) =>
         {
             var (me, scope) = (await access.GetAsync())!.Value;
             // SQL Server runs with retry-on-failure, so the transaction goes through the execution strategy
@@ -59,6 +59,7 @@ public static class Sync
                         {
                             await tx.RollbackAsync();
                             db.ChangeTracker.Clear();
+                            audit.Refused(me.Id, $"{change.Op} {change.Collection}/{change.Id}", problem);
                             return Results.Problem(problem, statusCode: 403, title: "Change not allowed");
                         }
                     }
@@ -70,6 +71,7 @@ public static class Sync
                     await tx.CommitAsync();
                     // Files of deleted attachments go only once the deletion is committed
                     foreach (var key in ctx.FilesToDelete) await files.DeleteAsync(key);
+                    foreach (var note in ctx.AccessChanges) audit.AccessChanged(me.Id, note);
                     var version = feed.Bump();
                     return Results.Json(new { saved = req.Changes.Count, version, changes = ToChanges(ctx.Changes) }, Json);
                 }
@@ -87,7 +89,7 @@ public static class Sync
         data.MapGet("/state/version", (ChangeFeed feed) => Results.Ok(new { version = feed.Version }));
 
         // Admins set a person's sign-in password (new people have none until then)
-        data.MapPost("/people/{id}/password", async (string id, PasswordRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users) =>
+        data.MapPost("/people/{id}/password", async (string id, PasswordRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users, SecurityEvents audit) =>
         {
             var (me, _) = (await access.GetAsync())!.Value;
             if (!Capabilities.Can(me.Role, Capabilities.Organisation)) return Results.Problem("Only admins can set passwords", statusCode: 403);
@@ -98,6 +100,9 @@ public static class Sync
             var result = await users.AddPasswordAsync(account, req.Password ?? "");
             if (!result.Succeeded) return Results.Problem(string.Join(" ", result.Errors.Select(e => e.Description)), statusCode: 400);
             await users.SetLockoutEndDateAsync(account, null);
+            // Someone else knows this password now: the person must replace it at their next sign-in
+            if (person.Id != me.Id) await db.People.Where(p => p.Id == person.Id).ExecuteUpdateAsync(s => s.SetProperty(p => p.MustChangePassword, true));
+            audit.PasswordSet(me.Id, person.Id);
             return Results.NoContent();
         });
     }
@@ -184,6 +189,8 @@ public static class Sync
         public Dictionary<string, (string Client, string Server)> Renamed { get; } = [];
         /// <summary>Storage keys of attachments deleted in this batch (removed after commit)</summary>
         public List<string> FilesToDelete { get; } = [];
+        /// <summary>Role / organisation / deactivation changes in this batch, logged as security events after commit</summary>
+        public List<string> AccessChanges { get; } = [];
 
         public bool Staff => Me.Role != Roles.ProductionUser;
 
@@ -217,6 +224,23 @@ public static class Sync
                     if (next.EmployeeId is not null && await c.Db.People.AsNoTracking().AnyAsync(p => p.Id != next.Id && p.EmployeeId == next.EmployeeId))
                         return $"Employee ID {next.EmployeeId} is already used";
                 }
+                if (next is not null)
+                {
+                    // Server-owned fields: never taken from the browser
+                    next.MustChangePassword = old?.MustChangePassword ?? false;
+                    next.LastSignInAt = old?.LastSignInAt;
+                    next.AnonymisedAt = old?.AnonymisedAt;
+                    next.DeactivatedAt = !next.Inactive ? null : old is { Inactive: true } ? old.DeactivatedAt : DateTimeOffset.Now;
+                }
+                if (next is not null && old is null) c.AccessChanges.Add($"added person {next.Id} as {next.Role}");
+                if (next is not null && old is not null)
+                {
+                    if (old.Role != next.Role) c.AccessChanges.Add($"changed role of {next.Id} from {old.Role} to {next.Role}");
+                    if (old.Inactive != next.Inactive) c.AccessChanges.Add(next.Inactive ? $"deactivated {next.Id}" : $"reactivated {next.Id}");
+                    if (old.Kind != next.Kind || old.VendorId != next.VendorId || old.ClientId != next.ClientId) c.AccessChanges.Add($"changed organisation of {next.Id}");
+                    if (old.Email != next.Email) c.AccessChanges.Add($"changed sign-in email of {next.Id}");
+                }
+                if (next is null && old is not null) c.AccessChanges.Add($"deleted person {old.Id}");
                 if (next is not null && old?.Email != next.Email) await SyncAccount(users, next, old);
                 if (next is null && old is not null)
                 {

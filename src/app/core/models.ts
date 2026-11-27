@@ -40,6 +40,13 @@ export interface User {
   clientId?: ID;
   /** Deactivated people stay on old tickets but can't be picked for new work */
   inactive?: boolean;
+  // Server-owned (set only by the API; ignored when sent back)
+  /** An admin set the password: the person must choose a new one first */
+  mustChangePassword?: boolean;
+  lastSignInAt?: string;
+  deactivatedAt?: string;
+  /** Retention: name / email / employee ID replaced */
+  anonymisedAt?: string;
 }
 
 /** Top level of the internal organisation: Division → Team → members */

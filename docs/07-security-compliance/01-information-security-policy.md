@@ -6,7 +6,7 @@
 | Version | 1.0 (draft) · 27 Nov 2026 |
 | Owner | [Information security officer] |
 | Applies to | The nPro application, its data, environments and everyone who builds, operates or uses it |
-| Alignment | ISO/IEC 27001:2022 Annex A controls, OWASP ASVS L2 |
+| Alignment | ISO/IEC 27001:2022 Annex A controls (see Statement of Applicability NPRO-ISO-001), OWASP ASVS L2 |
 
 ## 1. Principles
 Least privilege, need-to-know, defence in depth, secure by default, accountability.

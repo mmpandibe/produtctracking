@@ -10,9 +10,10 @@
 | Data | Retention | After retention | Mechanism |
 |---|---|---|---|
 | Active user accounts | While active | — | — |
-| Deactivated users | 2 years after deactivation | Anonymise name / email / employee ID ("Former user #n"); keep work records | Scheduled job (to build) |
+| Deactivated users | 2 years after deactivation | Anonymise name / email / employee ID ("Former user <id>"), remove the sign-in account and their leave / correction requests; keep work records | Daily `RetentionService` |
 | Tickets, comments, history, attachments | Product lifetime + 5 years | Delete or archive with the product | Admin deletes product; archive export |
-| Time logs | 7 years (billing / audit evidence) | Delete | Scheduled job (to build) |
+| Time logs | 7 years (billing / audit evidence) | Delete | Daily `RetentionService` |
+| Leave and correction requests (attendance) | 13 months after the last day covered | Delete | Daily `RetentionService` |
 | Attendance / productivity cache (if introduced) | 13 months | Delete | Scheduled job |
 | Automation run log | Latest 300 runs | Rolling deletion | Built in (`LogLimit`) |
 | Application / security logs | 12 months | Delete | Log store lifecycle |
@@ -32,5 +33,7 @@ Retention may be extended for a legal hold approved by Legal; recorded with reas
 Handled by the DPO within one month; where records must be kept (e.g. time logs for billing), restrict processing and anonymise
 where possible.
 
-## 5. Gaps
-Scheduled anonymisation / deletion jobs are not built yet — required before the first retention period ends (planned after go-live).
+## 5. Implementation
+The daily `RetentionService` (API) applies the periods above; settings `Retention:Enabled`, `Retention:LegalHold` (true pauses
+all deletion), `Retention:DeactivatedUserYears`, `Retention:TimeLogYears`, `Retention:AttendanceMonths`. Each run is logged as
+security event 1401 with counts. People deactivated before this release start their 2-year period on the release date.

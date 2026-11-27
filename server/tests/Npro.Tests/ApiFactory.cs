@@ -30,6 +30,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["ConnectionStrings:Npro"] = "unused",
             ["Automation:TimedRules"] = "false", // tests call TimedRulesService.RunOnceAsync directly
             ["Storage:Disk:Root"] = FilesRoot,
+            ["Retention:Enabled"] = "false", // ComplianceTests runs the job directly
             ["RateLimits:LoginPerMinute"] = "10000", // tests sign in often; HardeningTests checks the limit itself
         }));
         builder.ConfigureServices(services =>

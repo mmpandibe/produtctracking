@@ -26,6 +26,16 @@ public class User
     public string? VendorId { get; set; }
     public string? ClientId { get; set; }
     public bool Inactive { get; set; }
+
+    // ---- Server-owned (ISO 27001 follow-up): browsers see these but can never set them ----
+    /// <summary>Set when an admin sets the password; the person must choose a new one before using nPro</summary>
+    public bool MustChangePassword { get; set; }
+    /// <summary>Last successful sign-in (access reviews)</summary>
+    public DateTimeOffset? LastSignInAt { get; set; }
+    /// <summary>When the person was deactivated (retention: anonymised after <c>Retention:DeactivatedUserYears</c>)</summary>
+    public DateTimeOffset? DeactivatedAt { get; set; }
+    /// <summary>When the retention job replaced the person's name, email and employee ID</summary>
+    public DateTimeOffset? AnonymisedAt { get; set; }
 }
 
 public class Division

@@ -30,8 +30,14 @@ const SCREENS: Record<string, () => Promise<Type<unknown>>> = {
 
 const homeRedirect = () => homeFor(inject(DataStore).currentUser().role);
 
-/** Server mode without a session → login page; the login page is only for that case */
-const signedIn = () => inject(Session).mode() !== 'signed_out' || inject(Router).parseUrl('/login');
+/** Server mode without a session → login page; the login page is only for that case. Admin-set password → change it first. */
+const signedIn = () => {
+  const mode = inject(Session).mode();
+  if (mode === 'signed_out') return inject(Router).parseUrl('/login');
+  if (mode === 'change_password') return inject(Router).parseUrl('/change-password');
+  return true;
+};
+const canChangePassword = () => ['remote', 'change_password'].includes(inject(Session).mode()) || inject(Router).parseUrl('/');
 const signedOut = () => inject(Session).mode() === 'signed_out' || inject(Router).parseUrl('/');
 
 export const routes: Routes = [
@@ -40,6 +46,12 @@ export const routes: Routes = [
     title: 'Sign in · nPro',
     canActivate: [signedOut],
     loadComponent: () => import('./pages/login/login-page').then((m) => m.LoginPage),
+  },
+  {
+    path: 'change-password',
+    title: 'Change password · nPro',
+    canActivate: [canChangePassword],
+    loadComponent: () => import('./pages/login/change-password-page').then((m) => m.ChangePasswordPage),
   },
   {
     path: '',

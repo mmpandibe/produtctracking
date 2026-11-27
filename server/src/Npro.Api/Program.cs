@@ -68,6 +68,11 @@ builder.Services.AddAntiforgery(o =>
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.OnRejected = (ctx, _) =>
+    {
+        ctx.HttpContext.RequestServices.GetRequiredService<SecurityEvents>().RateLimited(ctx.HttpContext.Request.Path);
+        return ValueTask.CompletedTask;
+    };
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = config.GetValue("RateLimits:LoginPerMinute", 10), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
     o.AddPolicy("writes", ctx => RateLimitPartition.GetFixedWindowLimiter(
@@ -95,10 +100,13 @@ builder.Services.AddSingleton<IFileStore>(sp =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<RequestAccess>();
+builder.Services.AddSingleton<SecurityEvents>();
 // Step 18c: data version for polling browsers + timed automation rules every minute
 builder.Services.AddSingleton<ChangeFeed>();
 builder.Services.AddSingleton<TimedRulesStatus>();
 builder.Services.AddHostedService<TimedRulesService>();
+// ISO 27001 A.8.10: daily retention job (Retention:* settings)
+builder.Services.AddHostedService<RetentionService>();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {

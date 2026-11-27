@@ -87,6 +87,11 @@ public static class AdminCommand
         using var scope = services.CreateScope();
         var result = await CreateAsync(scope.ServiceProvider.GetRequiredService<NproDbContext>(), scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(), name, email, employeeId, password);
         Console.WriteLine(result);
+        if (!result.StartsWith("Error", StringComparison.Ordinal))
+        {
+            var person = await scope.ServiceProvider.GetRequiredService<NproDbContext>().People.AsNoTracking().FirstAsync(p => p.Email == email);
+            scope.ServiceProvider.GetRequiredService<SecurityEvents>().AdminCreated(person.Id, result.StartsWith("Password reset", StringComparison.Ordinal));
+        }
         return result.StartsWith("Error", StringComparison.Ordinal) ? 1 : 0;
     }
 
@@ -136,4 +141,33 @@ public static class AdminCommand
         Console.WriteLine();
         return new string(chars.ToArray());
     }
+}
+
+/// <summary>
+/// ISO 27001 A.8.15: security-relevant events (sign-in, lockout, refused changes, access and privilege changes, rate limits)
+/// written to the "Npro.Security" log category with stable event ids. Never logs passwords, tokens or the typed sign-in name
+/// of unknown accounts. On Windows / IIS these reach the Windows Event Log (see appsettings.Production.json) and can be
+/// shipped to the central log store from there.
+/// </summary>
+public sealed class SecurityEvents(ILoggerFactory factory, IHttpContextAccessor http)
+{
+    private readonly ILogger log = factory.CreateLogger("Npro.Security");
+
+    private string Ip => http.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+    public void SignedIn(string personId) => log.LogInformation(new EventId(1001, "SignIn"), "Sign-in succeeded for {PersonId} from {Ip}", personId, Ip);
+    public void SignInFailed(string? personId, string reason) => log.LogWarning(new EventId(1002, "SignInFailed"), "Sign-in failed for {PersonId} from {Ip}: {Reason}", personId ?? "(unknown account)", Ip, reason);
+    public void LockedOut(string personId) => log.LogWarning(new EventId(1003, "LockedOut"), "Account {PersonId} locked out after repeated failures (from {Ip})", personId, Ip);
+    public void SignedOut(string? personId) => log.LogInformation(new EventId(1004, "SignOut"), "Signed out {PersonId}", personId ?? "(none)");
+    public void Switched(string byPersonId, string toPersonId) => log.LogWarning(new EventId(1005, "DemoSwitch"), "Demo switcher: {By} signed in as {To} from {Ip}", byPersonId, toPersonId, Ip);
+    public void PasswordSet(string byPersonId, string personId) => log.LogWarning(new EventId(1101, "PasswordSet"), "Admin {By} set the password of {PersonId}", byPersonId, personId);
+    public void AdminCreated(string personId, bool reset) => log.LogWarning(new EventId(1102, "AdminCommand"), reset ? "create-admin reset the password of admin {PersonId}" : "create-admin created admin {PersonId}", personId);
+    public void AccessChanged(string byPersonId, string change) => log.LogWarning(new EventId(1103, "AccessChanged"), "{By}: {Change}", byPersonId, change);
+    public void Refused(string personId, string what, string reason) => log.LogWarning(new EventId(1201, "Refused"), "Refused {What} for {PersonId} from {Ip}: {Reason}", what, personId, Ip, reason);
+    public void RateLimited(string path) => log.LogWarning(new EventId(1202, "RateLimited"), "Rate limit hit on {Path} from {Ip}", path, Ip);
+    public void PasswordChanged(string personId) => log.LogInformation(new EventId(1007, "PasswordChanged"), "{PersonId} changed their password from {Ip}", personId, Ip);
+    public void PasswordChangeFailed(string personId) => log.LogWarning(new EventId(1008, "PasswordChangeFailed"), "{PersonId} gave a wrong current password when changing it (from {Ip})", personId, Ip);
+    public void AccessReviewExported(string byPersonId, int rows) => log.LogInformation(new EventId(1104, "AccessReview"), "{By} exported the access review ({Rows} people)", byPersonId, rows);
+    public void RetentionRan(RetentionResult r) => log.LogInformation(new EventId(1401, "Retention"), "Retention job: {People} people anonymised, {Logs} time logs, {Leaves} leave requests, {Corrections} corrections deleted", r.PeopleAnonymised, r.TimeLogsDeleted, r.LeaveRequestsDeleted, r.CorrectionsDeleted);
+    public void Decided(string byPersonId, string kind, string id, string decision) => log.LogInformation(new EventId(1301, "RequestDecided"), "{By} {Decision} {Kind} request {Id}", byPersonId, decision, kind, id);
 }

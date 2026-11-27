@@ -30,12 +30,19 @@ public sealed class RequestAccess(NproDbContext db, IHttpContextAccessor http)
     }
 }
 
-/// <summary>Endpoint filter: 401 unless an active nPro person is signed in</summary>
+/// <summary>
+/// Endpoint filter: 401 unless an active nPro person is signed in. A person whose password was set by an admin
+/// (MustChangePassword) can only use the /api/auth endpoints (me, change password, sign out) until they choose their own.
+/// </summary>
 public sealed class RequirePerson : IEndpointFilter
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext ctx, EndpointFilterDelegate next)
     {
         var access = ctx.HttpContext.RequestServices.GetRequiredService<RequestAccess>();
-        return await access.GetAsync() is null ? Results.Unauthorized() : await next(ctx);
+        var a = await access.GetAsync();
+        if (a is null) return Results.Unauthorized();
+        if (a.Value.Me.MustChangePassword && !ctx.HttpContext.Request.Path.StartsWithSegments("/api/auth"))
+            return Results.Problem("Choose a new password before using nPro", statusCode: 403, title: "Password change required");
+        return await next(ctx);
     }
 }
