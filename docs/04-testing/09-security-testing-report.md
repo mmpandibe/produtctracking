@@ -35,11 +35,11 @@
 
 | ID | Finding | Severity | Recommendation |
 |---|---|---|---|
-| S-01 | ASP.NET Data Protection keys not persisted → sessions lost on app-pool recycle; multi-node impossible | Medium | Persist key ring (protected folder or DB) — 18d |
-| S-02 | No rate limiting on login / sync | Medium | ASP.NET Core rate limiter — 18d |
-| S-03 | Security headers not set (CSP, X-Content-Type-Options, Referrer-Policy, frame-ancestors, HSTS) | Medium | Add via middleware / IIS — 18d |
+| S-01 | ASP.NET Data Protection keys not persisted → sessions lost on app-pool recycle; multi-node impossible | Medium | ✅ Fixed in 18d: `DataProtection:KeysPath`, DPAPI-protected |
+| S-02 | No rate limiting on login / sync | Medium | ✅ Fixed in 18d: login 10/min per address, writes 300/min per person (tested: 429) |
+| S-03 | Security headers not set (CSP, X-Content-Type-Options, Referrer-Policy, frame-ancestors, HSTS) | Medium | ✅ Fixed in 18d: CSP (self only), nosniff, X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, HSTS outside Development |
 | S-04 | No MFA / SSO | Medium | OIDC SSO with MFA — post go-live |
-| S-05 | Google Fonts CDN (third-party request, IP disclosure) | Low | Self-host Inter |
+| S-05 | Google Fonts CDN (third-party request, IP disclosure) | Low | ✅ Fixed in 18d: Inter bundled (@fontsource-variable/inter) |
 | S-06 | Development demo password committed (dev only) | Low | Keep empty in production; optional user-secrets |
 | S-07 | No FK constraints (integrity relies on the API) | Low | Add FKs in a migration |
 

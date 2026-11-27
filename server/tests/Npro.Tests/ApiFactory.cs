@@ -15,6 +15,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     public const string Password = "Test-password-1";
     private readonly SqliteConnection connection = new("DataSource=:memory:");
+    /// <summary>Attachment files of this test run (deleted afterwards)</summary>
+    public string FilesRoot { get; } = Path.Combine(Path.GetTempPath(), "npro-tests-" + Guid.NewGuid().ToString("N"));
 
     public ApiFactory() => connection.Open();
 
@@ -27,6 +29,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             ["Features:DemoSwitcher"] = "true",
             ["ConnectionStrings:Npro"] = "unused",
             ["Automation:TimedRules"] = "false", // tests call TimedRulesService.RunOnceAsync directly
+            ["Storage:Disk:Root"] = FilesRoot,
+            ["RateLimits:LoginPerMinute"] = "10000", // tests sign in often; HardeningTests checks the limit itself
         }));
         builder.ConfigureServices(services =>
         {
@@ -39,6 +43,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing) connection.Dispose();
+        if (disposing)
+        {
+            connection.Dispose();
+            try { if (Directory.Exists(FilesRoot)) Directory.Delete(FilesRoot, recursive: true); } catch (IOException) { }
+        }
     }
 }

@@ -5,8 +5,14 @@
   </app-page-header>
 
   <div class="mb-3 rounded-xl border border-brand/20 bg-brand/[0.06] px-3 py-2 text-[12px] text-ink/70">
-    <strong class="text-ink">Phase A runs on sample data.</strong> nPro talks to both systems through an adapter, so the screens stay the same when the
-    live connection is switched on. API keys will be stored on the nPro backend (Step 18), never in the browser.
+    @if (store.remote()) {
+      <strong class="text-ink">Data comes from the nPro server.</strong> The server's adapter talks to both systems and keeps leave and
+      correction requests in the database, so everyone sees the same requests. The source and API keys are set on the server
+      (<code>Attendance:Provider</code>, <code>Productivity:Provider</code>), never in the browser.
+    } @else {
+      <strong class="text-ink">The offline demo runs on sample data.</strong> nPro talks to both systems through an adapter, so the screens stay the same when the
+      live connection is switched on. API keys are stored on the nPro server, never in the browser.
+    }
   </div>
 
   <div class="mb-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -32,6 +38,9 @@
           }
         </div>
 
+        @if (ext.serverProviders(); as sp) {
+          <p class="mb-2 text-[12px]"><span class="label inline">Source on the server:</span> {{ providerName(sp[c.kind]) }}</p>
+        } @else {
         <span class="label">Source</span>
         <div class="mb-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2" role="radiogroup" [attr.aria-label]="c.name + ' source'">
           <button type="button" role="radio" class="rounded-lg border px-2.5 py-1.5 text-left text-[12px]" [class]="cf.mode === 'sample' ? 'border-brand bg-white' : 'border-ink/10 bg-white/50 hover:bg-white/80'" [attr.aria-checked]="cf.mode === 'sample'" (click)="setMode(c.kind, 'sample')">
@@ -48,6 +57,7 @@
           <label class="label" [for]="'ep-' + c.kind">API endpoint (used by the backend)</label>
           <input [id]="'ep-' + c.kind" class="input mb-2 py-1 text-[12px]" [placeholder]="c.endpointHint" [value]="cf.endpoint" (change)="setEndpoint(c.kind, $any($event.target).value)" />
           <p class="mb-2 text-[11px] text-ink/70">The API key is entered on the server when the backend is set up; nPro only stores the address here.</p>
+        }
         }
 
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-ink/10 pt-2 text-[11px] text-ink/70">

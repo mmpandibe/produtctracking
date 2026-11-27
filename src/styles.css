@@ -1,7 +1,9 @@
 @import 'tailwindcss';
+/* Step 18d: Inter is bundled with the app (no Google Fonts request, so the CSP can stay 'self' only) */
+@import '@fontsource-variable/inter';
 
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   /* Text colour on the light glass (use text-ink, text-ink/70, border-ink/10 …) */
   --color-ink: #1f2a37;

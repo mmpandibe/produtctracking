@@ -5,3 +5,4 @@ obj/
 publish/
 src/Npro.Api/wwwroot/
 .cookies-test.txt
+App_Data/

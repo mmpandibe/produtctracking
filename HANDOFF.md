@@ -1,4 +1,4 @@
-# nPro — Session handoff (as of 2026-11-26, after Step 18c)
+# nPro — Session handoff (as of 2026-11-27, after Step 18d)
 
 Read this first in a new session. Also see `ROADMAP.md` (step list) — this file is the working context.
 Project documentation (BRD, SRS, design, testing, deployment, support, security / privacy — 73 documents) is in `docs/`
@@ -339,5 +339,32 @@ switch `ExternalStore.employeeId` to the HR employee ID when the real systems ar
   workflow-blocked set-status logged as partial, timed escalation once per ticket, version moves); Angular 79. a11y scan clean.
 - **Still in the browser:** history entries for people's own edits (validated on the server: must be recorded as yourself),
   firstResponseAt / work-date stamping on people's edits, reports / CXO calculations (from the synced data).
-**Next (18d):** attachments to S3 (bytes still only in the uploader's IndexedDB), the productivity / attendance proxy with
-real API keys on the server, IIS publish profile + deployment steps + health check.
+**18d as built (2026-11-27):** the user has no AWS access or HR / tracker API details yet, so S3 and the live connectors wait.
+- **Attachments:** `POST /api/attachments` (multipart: id, issueId, file; 10 MB; ticket access checked) stores the bytes through
+  `IFileStore` (`DiskFileStore`, `Storage:Disk:Root`, default `App_Data/files`; key `yyyy/MM/<id>`, never the file name; keys
+  with `..` or rooted paths refused) and returns sync-shaped changes (attachment + "attached" activity). `GET
+  /api/attachments/{id}/content` checks access, always `application/octet-stream` + attachment disposition. `Attachment.StorageKey`
+  is `[JsonIgnore]`: never sent or accepted; sync copies it from the DB row; deleting an attachment through sync deletes the file
+  after commit (`SyncContext.FilesToDelete`). Frontend: `DataStore.addAttachment` uploads in server mode (`apiUpload`, after
+  `flushSync`), `downloadAttachment` uses `apiBlob`; offline demo keeps IndexedDB. Add S3 as a second `IFileStore`.
+- **Attendance:** `Npro.Infrastructure/Attendance/SampleAttendance.cs` ports the TS sample adapter; `LeaveRequests` /
+  `RegularisationRequests` tables (migration `AttendanceRequests`; demo requests seeded once). `AttendanceEndpoints.cs`: `GET
+  /api/attendance?from&to` (≤ 62 days; developers / testers see only themselves), `POST leave`, `POST regularisation`, `POST
+  {kind}/{id}/decide` (admin or anyone above the person in the manager chain, never yourself), `POST {kind}/{id}/cancel` (own
+  pending). Rows carry `userId` = `employeeId` = person id; `decidedBy` is a person id. `ExternalStore` switches to these when
+  `store.remote()`; Integrations page shows the server provider (`Attendance:Provider`, `Productivity:Provider`, "sample").
+- **Hardening (`Hardening.cs`, `Program.cs`):** `SecurityHeadersMiddleware` (CSP self only + 'unsafe-inline' styles, nosniff,
+  X-Frame-Options DENY, Referrer-Policy, Permissions-Policy, COOP, no-store on /api); HSTS outside Development; rate limiter
+  (`login` 10/min per IP on `/api/auth/login`, `writes` 300/min per person on sync + upload; 429 → friendly message in `api.ts`);
+  Data Protection `SetApplicationName("nPro")` + `DataProtection:KeysPath` (DPAPI); optional forwarded headers / HTTPS redirect
+  (`Hosting:*`); warnings when demo seed / switcher / no key path outside Development. `/api/health` now reports database,
+  storage and timed rules (`TimedRulesStatus`), 503 when the DB is down. `Npro.Api.exe create-admin --name --email --employee-id`
+  (password prompted or `NPRO_ADMIN_PASSWORD`; re-run resets the password).
+- **Deploy kit:** `scripts/publish.ps1` (tests, ng build, dotnet publish, wwwroot copy, zip into `/publish`, gitignored),
+  `appsettings.Production.json` (paths `D:/nPro/keys`, `D:/nPro/files`; no secrets), `scripts/run-production-local.ps1` +
+  launch config `npro-prod-local` (port 5150, DB `NproProdTest`). Angular production build has `inlineCritical: false`
+  (the inline loader script would break under the CSP). Inter is bundled via `@fontsource-variable/inter` (no Google Fonts).
+- The Data Protection application name changed, so browsers signed in before 18d must sign in again.
+- Verified: server tests 30 (`Step18dTests`), Angular 79, a11y 0 on desktop and mobile, production package run locally
+  (create-admin, sign-in by employee ID, headers, 429, font under CSP), dev app: approve a request, upload / download / remove a file.
+**Next:** S3 store and live HR / tracker connectors when access and API details arrive; SSO / MFA; e-mail notifications.

@@ -18,8 +18,8 @@
 | `Seed__DemoPassword` | set (demo data + accounts) | set or empty (demo or masked data) | **empty** |
 | `Features__DemoSwitcher` | true | true or false | **false** |
 | `Automation__TimedRules` | true | true | true |
-| Data Protection keys | user profile (default) | `D:\nPro\keys` | `D:\nPro\keys` (ACL: app pool only) ⚠ 18d |
-| File storage | browser IndexedDB | `D:\nPro\files` ⚠ 18d | `D:\nPro\files` → S3 later |
+| Data Protection keys | user profile (default) | `D:\nPro\keys` | `D:\nPro\keys` (ACL: app pool only) — `DataProtection:KeysPath` |
+| File storage | browser IndexedDB (offline demo) · `App_Data\files` (dev API) | `D:\nPro\files` | `D:\nPro\files` (`Storage:Disk:Root`) → S3 later |
 | External HR / tracker | sample adapters | sample adapters | sample until API details exist |
 | Logging | console | file / CloudWatch | CloudWatch; Information level |
 
@@ -38,3 +38,17 @@
 | Date | Environment | Change | By |
 |---|---|---|---|
 | | | | |
+
+## Step 18d settings
+
+| Key | Default | Notes |
+|---|---|---|
+| `DataProtection:KeysPath` | (none; Production file: `D:/nPro/keys`) | Without it, users are signed out on every restart (a warning is logged) |
+| `Storage:Disk:Root` | `App_Data/files` under the app (Production file: `D:/nPro/files`) | Attachment bytes; keys are `yyyy/MM/<id>`, never the file name |
+| `RateLimits:LoginPerMinute` | 10 | Per client address; 429 after that (the per-account lockout still applies) |
+| `RateLimits:WritesPerMinute` | 300 | Per signed-in person (sync and uploads) |
+| `Hosting:TrustForwardedHeaders` | false | true only behind a load balancer that sets X-Forwarded-For / -Proto |
+| `Hosting:HttpsRedirect` | false | true when IIS itself terminates TLS (HSTS is always sent outside Development) |
+| `Attendance:Provider` / `Productivity:Provider` | `sample` | Server-side sample adapter until the HR / tracker API details exist |
+| `Attendance:LateAfter` | `10:00` | Punch-in after this is "late" |
+| `Attendance:TimeZone` | server time zone | Windows time zone id, e.g. `India Standard Time` |

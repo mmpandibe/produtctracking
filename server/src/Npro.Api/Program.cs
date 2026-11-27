@@ -1,16 +1,31 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npro.Api;
 using Npro.Infrastructure;
+using Npro.Infrastructure.Files;
 
 var builder = WebApplication.CreateBuilder(args);
+var config = builder.Configuration;
 
 // ---------- Database (MS SQL Server) ----------
 // Development: .\SQLEXPRESS with Windows auth (appsettings.Development.json).
-// Production on AWS: set ConnectionStrings__Npro from AWS Secrets Manager / Parameter Store — never commit it.
+// Production: set ConnectionStrings__Npro in the server environment / secret store — never commit it.
 builder.Services.AddDbContext<NproDbContext>(o =>
-    o.UseSqlServer(builder.Configuration.GetConnectionString("Npro"), sql => sql.EnableRetryOnFailure()));
+    o.UseSqlServer(config.GetConnectionString("Npro"), sql => sql.EnableRetryOnFailure()));
+
+// ---------- Data Protection (protects the sign-in cookie and XSRF tokens) ----------
+// Step 18d: keys are kept in a folder so an IIS app-pool recycle or restart doesn't sign everyone out.
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("nPro");
+var keysPath = config["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(keysPath))
+{
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+    if (OperatingSystem.IsWindows()) dataProtection.ProtectKeysWithDpapi(protectToLocalMachine: true);
+}
 
 // ---------- Sign-in: ASP.NET Core Identity with a same-site cookie ----------
 builder.Services.AddAuthentication(IdentityConstants.ApplicationScheme).AddIdentityCookies();
@@ -48,10 +63,41 @@ builder.Services.AddAntiforgery(o =>
     o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 
+// ---------- Rate limits (Step 18d) ----------
+// Sign-in: 10 tries a minute per client address (on top of the per-account lockout). Writes: 300 a minute per person.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = config.GetValue("RateLimits:LoginPerMinute", 10), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    o.AddPolicy("writes", ctx => RateLimitPartition.GetFixedWindowLimiter(
+        ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = config.GetValue("RateLimits:WritesPerMinute", 300), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
+
+// ---------- Behind a load balancer / reverse proxy ----------
+// Hosting:TrustForwardedHeaders = true when the load balancer / proxy sets X-Forwarded-For / -Proto.
+builder.Services.Configure<ForwardedHeadersOptions>(o =>
+{
+    o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    o.KnownIPNetworks.Clear();
+    o.KnownProxies.Clear();
+});
+builder.Services.AddHsts(o => { o.MaxAge = TimeSpan.FromDays(365); o.IncludeSubDomains = true; });
+
+// ---------- Files (Step 18d) ----------
+// Storage:Disk:Root = folder outside the website (production e.g. D:\nPro\files). Default: App_Data\files.
+builder.Services.AddSingleton<IFileStore>(sp =>
+{
+    var root = sp.GetRequiredService<IConfiguration>()["Storage:Disk:Root"];
+    return new DiskFileStore(string.IsNullOrWhiteSpace(root) ? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "files") : root);
+});
+
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<RequestAccess>();
 // Step 18c: data version for polling browsers + timed automation rules every minute
 builder.Services.AddSingleton<ChangeFeed>();
+builder.Services.AddSingleton<TimedRulesStatus>();
 builder.Services.AddHostedService<TimedRulesService>();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -72,14 +118,33 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>(),
         app.Logger,
         useMigrations: db.Database.IsSqlServer(),
-        demoPassword: app.Configuration["Seed:DemoPassword"],
+        demoPassword: config["Seed:DemoPassword"],
         now: DateTimeOffset.Now);
 }
 
+// Step 18d: `Npro.Api.exe create-admin …` sets up the first admin of a fresh database, then exits
+if (args.Length > 0 && args[0] == "create-admin")
+{
+    Environment.ExitCode = await AdminCommand.RunAsync(app.Services, args);
+    return;
+}
+
+if (!app.Environment.IsDevelopment())
+{
+    if (!string.IsNullOrEmpty(config["Seed:DemoPassword"])) app.Logger.LogWarning("Seed:DemoPassword is set outside Development: demo accounts exist. Clear it for production.");
+    if (config.GetValue<bool>("Features:DemoSwitcher")) app.Logger.LogWarning("Features:DemoSwitcher is on outside Development. Turn it off for production.");
+    if (string.IsNullOrWhiteSpace(keysPath)) app.Logger.LogWarning("DataProtection:KeysPath is not set: users are signed out whenever the app restarts.");
+}
+
+if (config.GetValue<bool>("Hosting:TrustForwardedHeaders")) app.UseForwardedHeaders();
 app.UseExceptionHandler();
+if (!app.Environment.IsDevelopment()) app.UseHsts();
+if (config.GetValue<bool>("Hosting:HttpsRedirect")) app.UseHttpsRedirection();
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.UseMiddleware<XsrfMiddleware>();
 
 app.MapNproApi();

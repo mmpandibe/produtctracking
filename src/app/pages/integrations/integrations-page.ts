@@ -129,6 +129,11 @@ export class IntegrationsPage {
     if (h >= 1 && h <= 14) this.ext.updateConfig({ dayMinutes: Math.round(h * 60) });
   }
 
+  /** Server provider id → label (Step 18d: only the sample adapter exists until the company systems' API details arrive) */
+  protected providerName(id: string) {
+    return id === 'sample' ? 'Sample adapter (demo data generated on the server)' : id;
+  }
+
   protected teamName(u: User) {
     return this.store.teamById(u.teamId)?.name ?? '';
   }

@@ -201,6 +201,8 @@ public class Attachment
     public long Size { get; set; }
     public string Type { get; set; } = "";
     public string UploadedBy { get; set; } = "";
+    /// <summary>Where the bytes are in the file store (Step 18d). Server-only: never sent to or accepted from browsers.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? StorageKey { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
@@ -326,4 +328,39 @@ public class SummaryNote
 {
     public string Key { get; set; } = "";
     public string Text { get; set; } = "";
+}
+
+/// <summary>Step 18d: leave request kept by nPro's server-side attendance adapter (sample provider) — sick or casual</summary>
+public class LeaveRequest
+{
+    public string Id { get; set; } = "";
+    /// <summary>nPro person id</summary>
+    public string PersonId { get; set; } = "";
+    /// <summary>sick · casual</summary>
+    public string Type { get; set; } = "casual";
+    /// <summary>Local calendar days "yyyy-MM-dd" (inclusive)</summary>
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
+    public bool HalfDay { get; set; }
+    public string Reason { get; set; } = "";
+    /// <summary>pending · approved · rejected · cancelled</summary>
+    public string Status { get; set; } = "pending";
+    public DateTimeOffset AppliedAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTimeOffset? DecidedAt { get; set; }
+}
+
+/// <summary>Step 18d: request to correct a past day's punch in / out</summary>
+public class RegularisationRequest
+{
+    public string Id { get; set; } = "";
+    public string PersonId { get; set; } = "";
+    public string Date { get; set; } = "";
+    public DateTimeOffset PunchIn { get; set; }
+    public DateTimeOffset PunchOut { get; set; }
+    public string Reason { get; set; } = "";
+    public string Status { get; set; } = "pending";
+    public DateTimeOffset AppliedAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTimeOffset? DecidedAt { get; set; }
 }

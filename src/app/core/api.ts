@@ -39,13 +39,46 @@ export async function api<T = unknown>(method: 'GET' | 'POST' | 'PUT' | 'DELETE'
   } catch {
     throw new ApiError(0, 'The server can’t be reached');
   }
+  return readJson<T>(res);
+}
+
+async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   const json = text && res.headers.get('content-type')?.includes('json') ? JSON.parse(text) : undefined;
-  if (!res.ok) {
-    const message = (json && (json.detail || json.title)) || `Request failed (${res.status})`;
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw new ApiError(res.status, problemMessage(json, res.status));
   // A static file server answers unknown paths with index.html: that means there is no API
   if (text && !json) throw new ApiError(404, 'No API at this address');
   return json as T;
+}
+
+function problemMessage(json: { detail?: string; title?: string } | undefined, status: number) {
+  if (status === 429) return 'Too many requests. Wait a minute and try again.';
+  return (json && (json.detail || json.title)) || `Request failed (${status})`;
+}
+
+/** Step 18d: multipart upload (attachments). The browser sets the multipart Content-Type itself. */
+export async function apiUpload<T = unknown>(path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, { method: 'POST', credentials: 'same-origin', headers: { Accept: 'application/json', 'X-XSRF-TOKEN': xsrfToken() }, body: form });
+  } catch {
+    throw new ApiError(0, 'The server can’t be reached');
+  }
+  return readJson<T>(res);
+}
+
+/** Step 18d: downloads a file the API serves (attachments) as a Blob, with the API's error message on failure */
+export async function apiBlob(path: string): Promise<Blob> {
+  let res: Response;
+  try {
+    res = await fetch(path, { credentials: 'same-origin' });
+  } catch {
+    throw new ApiError(0, 'The server can’t be reached');
+  }
+  if (!res.ok) {
+    const text = await res.text();
+    const json = text && res.headers.get('content-type')?.includes('json') ? JSON.parse(text) : undefined;
+    throw new ApiError(res.status, problemMessage(json, res.status));
+  }
+  return res.blob();
 }

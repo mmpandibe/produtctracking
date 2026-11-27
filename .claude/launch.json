@@ -4,14 +4,38 @@
     {
       "name": "npro-dev",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["ng", "serve", "--port", "4200"],
+      "runtimeArgs": [
+        "ng",
+        "serve",
+        "--port",
+        "4200"
+      ],
       "port": 4200
     },
     {
       "name": "npro-api",
       "runtimeExecutable": "dotnet",
-      "runtimeArgs": ["run", "--project", "server/src/Npro.Api", "--launch-profile", "http"],
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "server/src/Npro.Api",
+        "--launch-profile",
+        "http"
+      ],
       "port": 5144,
+      "autoPort": false
+    },
+    {
+      "name": "npro-prod-local",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/run-production-local.ps1"
+      ],
+      "port": 5150,
       "autoPort": false
     }
   ]

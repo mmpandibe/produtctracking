@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npro.Domain;
 using Npro.Infrastructure;
+using Npro.Infrastructure.Files;
 using Npro.Infrastructure.Rules;
 
 namespace Npro.Api;
@@ -39,7 +40,7 @@ public static class Sync
             return Results.Json(snapshot, Json);
         });
 
-        data.MapPost("/sync", async (SyncRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users, ChangeFeed feed) =>
+        data.MapPost("/sync", async (SyncRequest req, RequestAccess access, NproDbContext db, UserManager<IdentityUser> users, ChangeFeed feed, IFileStore files) =>
         {
             var (me, scope) = (await access.GetAsync())!.Value;
             // SQL Server runs with retry-on-failure, so the transaction goes through the execution strategy
@@ -67,6 +68,8 @@ public static class Sync
                     foreach (var (trigger, issueId, value) in ctx.Events) await engine.FireAsync(trigger, issueId, value);
                     await db.SaveChangesAsync();
                     await tx.CommitAsync();
+                    // Files of deleted attachments go only once the deletion is committed
+                    foreach (var key in ctx.FilesToDelete) await files.DeleteAsync(key);
                     var version = feed.Bump();
                     return Results.Json(new { saved = req.Changes.Count, version, changes = ToChanges(ctx.Changes) }, Json);
                 }
@@ -78,7 +81,7 @@ public static class Sync
                     return Results.Problem("Someone else changed this at the same time. The latest data has been reloaded.", statusCode: 409, title: "Conflict");
                 }
             });
-        });
+        }).RequireRateLimiting("writes");
 
         // Cheap check the app polls: changes when anyone saves, or when a timed rule runs
         data.MapGet("/state/version", (ChangeFeed feed) => Results.Ok(new { version = feed.Version }));
@@ -179,6 +182,8 @@ public static class Sync
         public ChangeCollector Changes { get; } = new();
         /// <summary>Ticket id → (key the browser guessed, key the server gave)</summary>
         public Dictionary<string, (string Client, string Server)> Renamed { get; } = [];
+        /// <summary>Storage keys of attachments deleted in this batch (removed after commit)</summary>
+        public List<string> FilesToDelete { get; } = [];
 
         public bool Staff => Me.Role != Roles.ProductionUser;
 
@@ -297,9 +302,15 @@ public static class Sync
             {
                 var r = next ?? old!;
                 if (!await c.CanSeeIssue(r.IssueId)) return "You don't have access to this ticket";
+                // The storage key is server-owned: a client must never point a record at another file
+                // (it is not in the JSON copy 'old', so it is read from the database)
+                var storedKey = old is null ? null : await c.Db.Attachments.AsNoTracking().Where(a => a.Id == old.Id).Select(a => a.StorageKey).FirstOrDefaultAsync();
+                if (next is not null) next.StorageKey = storedKey;
                 if (old is null) return next!.UploadedBy == c.Me.Id ? null : "Files must be uploaded by you";
                 var product = await c.ProductOfIssue(r.IssueId);
-                return old.UploadedBy == c.Me.Id || (c.Staff && c.Can(Capabilities.Tickets, product)) ? null : "You can't remove this file";
+                if (!(old.UploadedBy == c.Me.Id || (c.Staff && c.Can(Capabilities.Tickets, product)))) return "You can't remove this file";
+                if (next is null && storedKey is not null) c.FilesToDelete.Add(storedKey);
+                return null;
             }),
 
             "activities" => await Upsert<Activity>(c, ch, async (old, next) =>

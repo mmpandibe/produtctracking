@@ -5,7 +5,7 @@ import type {
   Roadmap, RoadmapStatus, Role, RunningTimer, SlaPolicy, Sprint, SupportLevel, SupportLevelConfig, StatusCategory, Team, User, UserKind, Vendor, WorkActivity, Workflow,
   WorkflowStatus, WorkLog,
 } from './models';
-import { api } from './api';
+import { api, apiBlob, apiUpload } from './api';
 import { fileStore } from './file-store';
 import { type SyncChange, applyChanges, diffState } from './state-diff';
 import { migrateV10, migrateV9 } from './migrate';
@@ -1911,9 +1911,25 @@ export class DataStore {
     return this.state().attachments.filter((a) => a.issueId === issueId);
   }
 
-  /** Saves the file bytes to IndexedDB, then records the attachment. Rejects files over the size limit. */
+  /**
+   * Offline demo: saves the bytes to IndexedDB and records the attachment. Server mode (Step 18d): uploads the file; the
+   * server stores it and creates the attachment and its history entry. Rejects files over the size limit.
+   */
   async addAttachment(issueId: ID, file: File): Promise<Attachment> {
     if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} is larger than 10 MB`);
+    if (this.remote()) {
+      // A ticket created a moment ago may still be on its way to the server
+      await this.flushSync();
+      const form = new FormData();
+      form.append('id', uid());
+      form.append('issueId', issueId);
+      form.append('file', file, file.name);
+      const res = await apiUpload<{ version?: number; changes?: SyncChange[] }>('/api/attachments', form);
+      if (res?.version !== undefined) this.serverVersion = res.version;
+      this.applyServerChanges(res?.changes ?? []);
+      const saved = res?.changes?.find((c) => c.collection === 'attachments');
+      return (saved?.data ?? this.state().attachments.find((a) => a.issueId === issueId && a.name === file.name)) as Attachment;
+    }
     const attachment: Attachment = {
       id: uid(), issueId, name: file.name, size: file.size, type: file.type || 'application/octet-stream',
       uploadedBy: this.state().currentUserId, createdAt: now(),
@@ -1927,14 +1943,15 @@ export class DataStore {
     return attachment;
   }
 
+  /** Server mode: the deletion goes through sync and the server removes the stored file once it is saved */
   removeAttachment(id: ID) {
-    void fileStore.delete(id).catch(() => undefined);
+    if (!this.remote()) void fileStore.delete(id).catch(() => undefined);
     this.state.update((s) => ({ ...s, attachments: s.attachments.filter((a) => a.id !== id) }));
   }
 
   /** Opens the browser's save dialog for an attachment */
   async downloadAttachment(a: Attachment) {
-    const blob = await fileStore.get(a.id);
+    const blob = this.remote() ? await apiBlob(`/api/attachments/${encodeURIComponent(a.id)}/content`) : await fileStore.get(a.id);
     if (!blob) throw new Error(`${a.name} is no longer stored in this browser`);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');

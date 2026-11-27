@@ -35,6 +35,8 @@ public class NproDbContext(DbContextOptions<NproDbContext> options) : IdentityDb
     public DbSet<SlaPolicy> SlaPolicies => Set<SlaPolicy>();
     public DbSet<SupportLevelConfig> SupportLevels => Set<SupportLevelConfig>();
     public DbSet<SummaryNote> SummaryNotes => Set<SummaryNote>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<RegularisationRequest> RegularisationRequests => Set<RegularisationRequest>();
 
     private const int IdLength = 64;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -121,6 +123,8 @@ public class NproDbContext(DbContextOptions<NproDbContext> options) : IdentityDb
         b.Entity<SlaPolicy>(e => { Id(e); e.HasIndex(x => new { x.Level, x.Priority }).IsUnique(); e.Property(x => x.Level).HasMaxLength(4); e.Property(x => x.Priority).HasMaxLength(16); });
         b.Entity<SupportLevelConfig>(e => { e.HasKey(x => x.Level); e.Property(x => x.Level).HasMaxLength(4); e.Property(x => x.Name).HasMaxLength(200); Ref(e, x => x.TeamId); });
         b.Entity<SummaryNote>(e => { e.HasKey(x => x.Key); e.Property(x => x.Key).HasMaxLength(32); });
+        b.Entity<LeaveRequest>(e => { Id(e); Ref(e, x => x.PersonId, x => x.DecidedBy); e.HasIndex(x => x.PersonId); e.Property(x => x.Type).HasMaxLength(16); e.Property(x => x.Status).HasMaxLength(16); e.Property(x => x.From).HasMaxLength(10); e.Property(x => x.To).HasMaxLength(10); e.Property(x => x.Reason).HasMaxLength(500); });
+        b.Entity<RegularisationRequest>(e => { Id(e); Ref(e, x => x.PersonId, x => x.DecidedBy); e.HasIndex(x => new { x.PersonId, x.Date }); e.Property(x => x.Status).HasMaxLength(16); e.Property(x => x.Date).HasMaxLength(10); e.Property(x => x.Reason).HasMaxLength(500); });
     }
 
     private static void Id<T>(EntityTypeBuilder<T> e) where T : class

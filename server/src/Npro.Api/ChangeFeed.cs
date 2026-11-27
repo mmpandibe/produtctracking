@@ -22,7 +22,7 @@ public sealed class ChangeFeed
 /// Step 18c: runs the time-based automation rules (SLA at risk / breached, due date passed) every minute on the server.
 /// On IIS set the app pool to Start mode = AlwaysRunning and the site to Preload enabled, or IIS stops it when idle.
 /// </summary>
-public sealed class TimedRulesService(IServiceScopeFactory scopes, ChangeFeed feed, ILogger<TimedRulesService> log, IConfiguration config) : BackgroundService
+public sealed class TimedRulesService(IServiceScopeFactory scopes, ChangeFeed feed, ILogger<TimedRulesService> log, IConfiguration config, TimedRulesStatus status) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -35,6 +35,8 @@ public sealed class TimedRulesService(IServiceScopeFactory scopes, ChangeFeed fe
             try
             {
                 var runs = await RunOnceAsync(scopes, DateTimeOffset.Now, stoppingToken);
+                status.LastRunAt = DateTimeOffset.Now;
+                status.LastError = null;
                 if (runs > 0)
                 {
                     feed.Bump();
@@ -43,6 +45,7 @@ public sealed class TimedRulesService(IServiceScopeFactory scopes, ChangeFeed fe
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                status.LastError = ex.GetType().Name;
                 log.LogError(ex, "Timed automation rules failed");
             }
         } while (await timer.WaitForNextTickAsync(stoppingToken));

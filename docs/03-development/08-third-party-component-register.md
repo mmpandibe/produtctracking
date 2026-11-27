@@ -18,7 +18,7 @@
 | Microsoft.AspNetCore.* (shared framework) | .NET 10 | MIT | Web API |
 | Microsoft.EntityFrameworkCore.SqlServer | 10.0.15 | MIT | Data access |
 | Microsoft.AspNetCore.Identity.EntityFrameworkCore | 10.0.15 | MIT | Sign-in accounts |
-| Inter font (Google Fonts CDN) | — | SIL OFL 1.1 | Typography (**recommend self-hosting**, see privacy) |
+| @fontsource-variable/inter (Inter font, bundled since 18d) | 5.3.0 | SIL OFL 1.1 | Typography, served from our own site |
 
 ## 2. Build / test components (not shipped)
 

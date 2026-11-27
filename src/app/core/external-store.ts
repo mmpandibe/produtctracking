@@ -1,4 +1,5 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import { api } from './api';
 import { DataStore } from './data-store';
 import {
   type AttendanceDay,
@@ -26,6 +27,17 @@ const CONFIG_KEY = 'npro-integrations';
 
 /** External records, re-keyed from employee id to nPro user id */
 export type Keyed<T> = T & { userId: ID };
+
+/** Step 18d: what GET /api/attendance returns (rows already carry the nPro person id) */
+interface ServerAttendance {
+  providers: { attendance: string; productivity: string };
+  lateAfter: string;
+  days: Keyed<AttendanceDay>[];
+  productivity: Keyed<ProductivityDay>[];
+  leaves: Keyed<LeaveRequest>[];
+  regularisations: Keyed<RegularisationRequest>[];
+  balances: Keyed<LeaveBalance>[];
+}
 
 function loadConfig(): IntegrationConfig {
   try {
@@ -61,8 +73,10 @@ export class ExternalStore {
   /** Changes only when something that affects fetched data changes (not on sync stamps) */
   readonly sourceKey = computed(() => {
     const c = this.config();
-    return JSON.stringify([c.attendance.mode, c.productivity.mode, c.employeeCodes, c.lateAfter, this.trackedUsers().map((u) => u.id)]);
+    return JSON.stringify([this.store.remote(), c.attendance.mode, c.productivity.mode, c.employeeCodes, c.lateAfter, this.trackedUsers().map((u) => u.id)]);
   });
+  /** Server mode (Step 18d): the providers the server is set up with; undefined in the offline demo */
+  readonly serverProviders = signal<ServerAttendance['providers'] | undefined>(undefined);
   readonly loading = signal(false);
   readonly productivity = signal<Keyed<ProductivityDay>[]>([]);
   readonly attendance = signal<Keyed<AttendanceDay>[]>([]);
@@ -115,7 +129,9 @@ export class ExternalStore {
   private readonly userByEmployee = computed(() => new Map(this.trackedUsers().map((u) => [this.employeeId(u), u.id])));
 
   userOfEmployee(employeeId: string | undefined) {
-    return employeeId ? this.store.userById(this.userByEmployee().get(employeeId)) : undefined;
+    if (!employeeId) return undefined;
+    // Server mode: requests carry the nPro person id
+    return this.store.userById(this.userByEmployee().get(employeeId)) ?? (this.store.remote() ? this.store.userById(employeeId) : undefined);
   }
 
   /** Managers approve requests of the people reporting to them; admins approve anyone's. Never your own. */
@@ -150,7 +166,7 @@ export class ExternalStore {
   }
 
   resetSampleData() {
-    SampleAttendanceSource.reset();
+    if (!this.store.remote()) SampleAttendanceSource.reset();
     const r = this.range();
     if (r) void this.load(r);
   }
@@ -172,6 +188,7 @@ export class ExternalStore {
   async load(range: DateRange) {
     this.range.set(range);
     this.loading.set(true);
+    if (this.store.remote()) return this.loadFromServer(range);
     const ids = this.trackedUsers().map((u) => this.employeeId(u));
     const wide: DateRange = { from: addDateKey(range.from, -60), to: addDateKey(range.to, 60) };
     const year = Number(toDateKey(new Date(this.clock())).slice(0, 4));
@@ -205,6 +222,32 @@ export class ExternalStore {
     this.loading.set(false);
   }
 
+  /** Step 18d: one call; the server scopes the people and stores the requests */
+  private async loadFromServer(range: DateRange) {
+    const stamp = new Date(this.clock()).toISOString();
+    try {
+      const r = await api<ServerAttendance>('GET', `/api/attendance?from=${range.from}&to=${range.to}`);
+      this.serverProviders.set(r.providers);
+      this.attendance.set(r.days);
+      this.productivity.set(r.productivity);
+      this.leaves.set(r.leaves);
+      this.regularisations.set(r.regularisations);
+      this.balances.set(r.balances);
+      this.updateConnector('attendance', { lastSyncAt: stamp, lastError: undefined });
+      this.updateConnector('productivity', { lastSyncAt: stamp, lastError: undefined });
+      this.errors.set({});
+    } catch (err) {
+      const message = (err as Error).message;
+      this.errors.set({ attendance: message, productivity: message });
+      this.attendance.set([]);
+      this.productivity.set([]);
+      this.leaves.set([]);
+      this.regularisations.set([]);
+      this.balances.set([]);
+    }
+    this.loading.set(false);
+  }
+
   private reload() {
     const r = this.range();
     return r ? this.load(r) : Promise.resolve();
@@ -228,25 +271,29 @@ export class ExternalStore {
 
   async applyLeave(input: Omit<LeaveInput, 'employeeId'>) {
     const me = this.store.currentUser();
-    await this.attendanceSource.applyLeave({ ...input, employeeId: this.employeeId(me) });
+    if (this.store.remote()) await api('POST', '/api/attendance/leave', input);
+    else await this.attendanceSource.applyLeave({ ...input, employeeId: this.employeeId(me) });
     await this.reload();
   }
 
   async requestRegularisation(input: Omit<RegularisationInput, 'employeeId'>) {
     const me = this.store.currentUser();
-    await this.attendanceSource.requestRegularisation({ ...input, employeeId: this.employeeId(me) });
+    if (this.store.remote()) await api('POST', '/api/attendance/regularisation', input);
+    else await this.attendanceSource.requestRegularisation({ ...input, employeeId: this.employeeId(me) });
     await this.reload();
   }
 
   async decide(kind: RequestKind, req: Keyed<LeaveRequest | RegularisationRequest>, decision: 'approved' | 'rejected') {
     if (!this.canApprove(req.userId)) throw new Error('Only their manager or an admin can decide this');
-    await this.attendanceSource.decide(kind, req.id, decision, this.employeeId(this.store.currentUser()));
+    if (this.store.remote()) await api('POST', `/api/attendance/${kind}/${encodeURIComponent(req.id)}/decide`, { decision });
+    else await this.attendanceSource.decide(kind, req.id, decision, this.employeeId(this.store.currentUser()));
     await this.reload();
   }
 
   async cancel(kind: RequestKind, req: Keyed<LeaveRequest | RegularisationRequest>) {
     if (req.userId !== this.store.currentUser().id) throw new Error('Only the person who asked can withdraw it');
-    await this.attendanceSource.cancel(kind, req.id);
+    if (this.store.remote()) await api('POST', `/api/attendance/${kind}/${encodeURIComponent(req.id)}/cancel`);
+    else await this.attendanceSource.cancel(kind, req.id);
     await this.reload();
   }
 }

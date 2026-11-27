@@ -27,8 +27,8 @@ public static class Endpoints
     {
         var api = app.MapGroup("/api");
 
-        api.MapGet("/health", async (NproDbContext db) => Results.Ok(new { status = "ok", database = await db.Database.CanConnectAsync() ? "up" : "down" }))
-            .AllowAnonymous();
+        // Step 18d: database, file storage and the timed-rules timer (see Health.CheckAsync)
+        api.MapGet("/health", Health.CheckAsync).AllowAnonymous();
 
         // ---------- Sign-in ----------
         var auth = api.MapGroup("/auth");
@@ -47,7 +47,7 @@ public static class Endpoints
             var result = await signIn.PasswordSignInAsync(email, req.Password ?? "", isPersistent: false, lockoutOnFailure: true);
             if (result.IsLockedOut) return Results.Problem("Too many attempts. Try again in a few minutes.", statusCode: 423);
             return result.Succeeded ? Results.Ok(new { person.Id }) : Results.Problem("Wrong email, employee ID or password", statusCode: 401);
-        }).AllowAnonymous();
+        }).AllowAnonymous().RequireRateLimiting("login");
 
         auth.MapPost("/logout", async (SignInManager<IdentityUser> signIn) =>
         {
@@ -134,5 +134,7 @@ public static class Endpoints
         });
 
         data.MapSync();
+        data.MapAttachments();
+        data.MapAttendance();
     }
 }

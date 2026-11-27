@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npro.Infrastructure.Attendance;
 
 namespace Npro.Infrastructure;
 
@@ -14,7 +15,19 @@ public static class DbInitializer
         if (useMigrations) await db.Database.MigrateAsync();
         else await db.Database.EnsureCreatedAsync();
 
-        if (string.IsNullOrEmpty(demoPassword) || await db.People.AnyAsync()) return;
+        if (string.IsNullOrEmpty(demoPassword)) return;
+        if (await db.People.AnyAsync())
+        {
+            // Databases seeded before Step 18d get the demo leave / correction requests once
+            if (await db.People.AnyAsync(p => p.Id == "u4") && !await db.LeaveRequests.AnyAsync() && !await db.RegularisationRequests.AnyAsync())
+            {
+                var (lv, rg) = SampleAttendance.DemoRequests(now, TimeZoneInfo.Local);
+                db.LeaveRequests.AddRange(lv);
+                db.RegularisationRequests.AddRange(rg);
+                await db.SaveChangesAsync();
+            }
+            return;
+        }
 
         var d = DemoData.Build(now);
         db.People.AddRange(d.Users);
@@ -34,6 +47,9 @@ public static class DbInitializer
         db.AutomationRules.AddRange(d.AutomationRules);
         db.SlaPolicies.AddRange(d.SlaPolicies);
         db.SupportLevels.AddRange(d.SupportLevels);
+        var (leaves, regs) = SampleAttendance.DemoRequests(now, TimeZoneInfo.Local);
+        db.LeaveRequests.AddRange(leaves);
+        db.RegularisationRequests.AddRange(regs);
         await db.SaveChangesAsync();
 
         // A sign-in account per person; the Identity user id is the nPro person id

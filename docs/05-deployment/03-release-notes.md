@@ -31,12 +31,20 @@
 ### Database migrations
 `Initial`, `EmployeeId` (adds `People.EmployeeId`, unique; backfills demo people).
 
+### Step 18d (not yet committed)
+- **Attachments on the server**: uploads go to the API (10 MB limit); files are stored on disk behind a storage interface
+  (S3 can be added later); downloads check ticket access and are always served as downloads.
+- **Attendance on the server**: the sample adapter runs in the API; leave and correction requests and approvals are stored in
+  the database and shared by everyone.
+- **IIS kit and hardening**: `scripts/publish.ps1`, `appsettings.Production.json`, `create-admin` command, persisted Data
+  Protection keys, security headers (CSP), rate limits, fuller health check, self-hosted Inter font.
+- Migration `AttendanceRequests` (tables `LeaveRequests`, `RegularisationRequests`).
+
 ### Known limitations
-- Attachments: file bytes stay in the uploader's browser until Step 18d.
 - Attendance / productivity: sample data; live HR / tracker connection needs API details.
 - No e-mail notifications, SSO or MFA yet.
-- First-admin set-up for a fresh production database arrives with 18d.
 
 ### Upgrade notes
 Configuration keys: `ConnectionStrings:Npro`, `Seed:DemoPassword` (leave empty in production), `Features:DemoSwitcher` (false),
-`Automation:TimedRules` (true). IIS app pool must be AlwaysRunning with Preload for timed rules.
+`Automation:TimedRules` (true). 18d adds `DataProtection:KeysPath`, `Storage:Disk:Root`, `RateLimits:*`, `Hosting:*`,
+`Attendance:*` and `Productivity:Provider` (see the Environment Configuration Document). IIS app pool must be AlwaysRunning with Preload for timed rules.

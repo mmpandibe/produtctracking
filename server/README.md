@@ -43,7 +43,7 @@ Every write (POST) must send the `X-XSRF-TOKEN` header with the value of the `XS
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/health` | open; reports database up/down |
+| GET | `/api/health` | open; database, file storage and timed rules up/down (503 when the database is down) |
 | POST | `/api/auth/login` | `{ email, password }` → `npro.auth` cookie (HttpOnly, SameSite=Strict, 8 h sliding); 5 wrong tries lock for 5 min |
 | POST | `/api/auth/logout` | |
 | GET | `/api/auth/me` | person, capabilities, access scope |
@@ -55,6 +55,10 @@ Every write (POST) must send the `X-XSRF-TOKEN` header with the value of the `XS
 | GET | `/api/state` | 18b: everything the person may see, in the frontend's DataState shape |
 | POST | `/api/sync` | 18b: `{ changes: [{ collection, op: upsert or delete, id, data }] }` — each change checked against role + scope, all-or-nothing (403 refused, 409 conflict). 18c: the server then numbers new tickets and runs automation; the answer is `{ saved, version, changes }` with everything it changed |
 | POST | `/api/people/{id}/password` | 18b: admins set a person's password |
+| POST | `/api/attachments` | 18d: multipart upload (id, issueId, file ≤ 10 MB) |
+| GET | `/api/attachments/{id}/content` | 18d: download (ticket access checked) |
+| GET | `/api/attendance?from&to` | 18d: attendance, productivity, leave, corrections, balances for the people you can see |
+| POST | `/api/attendance/leave`, `/regularisation`, `/{kind}/{id}/decide`, `/{kind}/{id}/cancel` | 18d: requests and approvals |
 | GET | `/api/state/version` | 18c: data version (moves on every save and timed rule run); the app polls it every 30 s |
 
 JSON uses the frontend's shape: camelCase, the same lower_snake values (`division_head`, `in_progress`), empty optional
@@ -67,12 +71,18 @@ fields left out.
 | `ConnectionStrings:Npro` | `.\SQLEXPRESS`, Windows auth | from AWS Secrets Manager / Parameter Store as env var `ConnectionStrings__Npro` |
 | `Seed:DemoPassword` | set → demo data | **empty** (no demo data) |
 | `Features:DemoSwitcher` | `true` | `false` |
+| `DataProtection:KeysPath` | (not set) | `D:/nPro/keys` |
+| `Storage:Disk:Root` | `App_Data/files` | `D:/nPro/files` |
 
-## IIS deployment (details in 18d)
+More 18d keys (rate limits, forwarded headers, attendance provider) are listed in
+`docs/05-deployment/06-environment-configuration-document.md`.
+
+## IIS deployment (Step 18d; full steps in `docs/05-deployment/01-deployment-plan.md`)
 
 1. Install the **ASP.NET Core 10 Hosting Bundle** on the Windows server.
-2. `dotnet publish server/src/Npro.Api -c Release -o publish` (the generated `web.config` uses the in-process
-   ASP.NET Core Module); copy the Angular production build into `publish/wwwroot` so one IIS site serves both.
+2. Run `.\scripts\publish.ps1` from the repository root: it tests, builds Angular, publishes the API with the Angular app in
+   `wwwroot` and zips it into `publish\`. On a fresh database create the first admin with
+   `Npro.Api.exe create-admin --name "Full Name" --email you@company.com --employee-id EMP-001`.
 3. App pool: *No Managed Code*; for the timed automation rules (background service, every minute) set
    **Start mode = AlwaysRunning** and **Preload enabled = true** on the site, or IIS stops them when idle.
    (`Automation:TimedRules` = false switches the timer off.)

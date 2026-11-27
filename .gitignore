@@ -50,3 +50,6 @@ Thumbs.db
 .env
 .env.*
 *.pfx
+
+# Step 18d: IIS deployment packages (scripts/publish.ps1)
+/publish
